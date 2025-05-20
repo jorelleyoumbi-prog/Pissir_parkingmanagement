@@ -1,0 +1,86 @@
+package com.parkingsystem.backend.config;
+
+import java.io.IOException;
+
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.util.StringUtils;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.parkingsystem.backend.util.JwtUtil;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private JwtUtil jwtUtil;
+    private UserDetailsService userDetailsService;
+
+    public JwtAuthenticationFilter(JwtUtil jwtUtil, UserDetailsService userDetailsService) {
+        this.jwtUtil = jwtUtil;
+        this.userDetailsService = userDetailsService;
+    }
+    
+    private String extractUsername(String token) {
+        // Estrazione del nome utente dal token JWT
+        // Questo è un esempio generico, adatta questa logica in base al tuo JwtUtil
+        try {
+            // Assumiamo che il JWT abbia una struttura standard con payload decodificabile
+            String[] parts = token.split("\\.");
+            if (parts.length == 3) {
+                // Decodifica il payload (seconda parte del token)
+                String payload = new String(java.util.Base64.getDecoder().decode(parts[1]));
+                
+                // Cerca il campo "sub" (subject) che solitamente contiene l'username
+                // Questo è un parsing molto semplificato, considera l'uso di una libreria JSON
+                if (payload.contains("\"sub\"")) {
+                    int startIndex = payload.indexOf("\"sub\"") + 7; // "sub":"
+                    int endIndex = payload.indexOf("\"", startIndex);
+                    return payload.substring(startIndex, endIndex);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error extracting username from token", e);
+        }
+        return null;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+        try {
+            String jwt = getJwtFromRequest(request);
+            if (StringUtils.hasText(jwt)) {
+                // Estrai il nome utente dal token in base alla struttura del tuo JwtUtil
+                // Questo dipende dai metodi disponibili nella tua classe JwtUtil
+                String username = extractUsername(jwt); // Metodo personalizzato
+                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                
+                // Usa il metodo validateToken con i parametri corretti
+                if (jwtUtil.validateToken(jwt, userDetails)) {
+                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                            userDetails, null, userDetails.getAuthorities());
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Could not set user authentication in security context", e);
+        }
+        filterChain.doFilter(request, response);
+    }
+
+    private String getJwtFromRequest(HttpServletRequest request) {
+        String bearerToken = request.getHeader("Authorization");
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
+            return bearerToken.substring(7);
+        }
+        return null;
+    }
+}

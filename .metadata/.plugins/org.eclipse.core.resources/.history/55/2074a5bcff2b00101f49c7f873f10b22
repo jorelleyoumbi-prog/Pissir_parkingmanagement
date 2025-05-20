@@ -1,0 +1,179 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.apache.coyote.BadRequestException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.exception.ResourceNotFoundException;
+import com.parkingsystem.model.MWbot;
+import com.parkingsystem.repository.MWbotRepository;
+
+
+/**
+ * Service for MWbot operations
+ */
+@Service
+public class MWbotService {
+
+    @Autowired
+    private MWbotRepository mwbotRepository;
+
+    @Autowired
+    private NotificationService notificationService;
+
+    @Value("${mwbot.low.battery.threshold:20}")
+    private int lowBatteryThreshold;
+
+    public List<MWbot> getAllMWbots() {
+        return mwbotRepository.findAll();
+    }
+
+    public MWbot getMWbotById(Long id) {
+        return mwbotRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("MWbot not found with id: " + id));
+    }
+
+    public MWbot getMWbotByBotId(String botId) {
+        return mwbotRepository.findByBotId(botId)
+                .orElseThrow(() -> new ResourceNotFoundException("MWbot not found with botId: " + botId));
+    }
+
+    public List<MWbot> getMWbotsByChargingRequestId(Long chargingRequestId) {
+        return mwbotRepository.findByCurrentChargingRequestId(chargingRequestId);
+    }
+
+    public List<MWbot> getAvailableMWbots() {
+        return mwbotRepository.findByStatus(MWbot.BotStatus.AVAILABLE);
+    }
+
+    public MWbot createMWbot(MWbot mwbot) {
+        if (mwbot.getBotId() == null || mwbot.getBotId().trim().isEmpty()) {
+            throw new BadRequestException("Bot ID is required");
+        }
+
+        if (mwbotRepository.existsByBotId(mwbot.getBotId())) {
+            throw new BadRequestException("Bot ID is already in use");
+        }
+
+        mwbot.setStatus(MWbot.BotStatus.AVAILABLE);
+        mwbot.setLastUpdated(LocalDateTime.now());
+
+        if (mwbot.getBatteryLevel() == null || mwbot.getBatteryLevel() < 0 || mwbot.getBatteryLevel() > 100) {
+            mwbot.setBatteryLevel(100);
+        }
+
+        if (mwbot.getChargingRateKw() == null || mwbot.getChargingRateKw() <= 0) {
+            mwbot.setChargingRateKw(11.0);
+        }
+
+        mwbot.setMaintenanceRequired(false);
+
+        return mwbotRepository.save(mwbot);
+    }
+
+    public MWbot updateMWbot(Long id, MWbot mwbot) {
+        MWbot existingMWbot = getMWbotById(id);
+
+        if (mwbot.getBotId() != null &&
+                !mwbot.getBotId().equals(existingMWbot.getBotId())) {
+
+            if (mwbotRepository.existsByBotId(mwbot.getBotId())) {
+                throw new BadRequestException("Bot ID is already in use");
+            }
+
+            existingMWbot.setBotId(mwbot.getBotId());
+        }
+
+        if (mwbot.getStatus() != null) {
+            existingMWbot.setStatus(mwbot.getStatus());
+        }
+
+        if (mwbot.getBatteryLevel() != null) {
+            existingMWbot.setBatteryLevel(mwbot.getBatteryLevel());
+
+            if (mwbot.getBatteryLevel() <= lowBatteryThreshold) {
+                notificationService.sendMWbotLowBatteryNotification(existingMWbot);
+            }
+        }
+
+        if (mwbot.getChargingRateKw() != null) {
+            existingMWbot.setChargingRateKw(mwbot.getChargingRateKw());
+        }
+
+        if (mwbot.getCurrentChargingRequest() != null) {
+            existingMWbot.setCurrentChargingRequest(mwbot.getCurrentChargingRequest());
+        }
+
+        if (mwbot.getMaintenanceRequired() != null) {
+            existingMWbot.setMaintenanceRequired(mwbot.getMaintenanceRequired());
+
+            if (mwbot.getMaintenanceRequired()) {
+                notificationService.sendMWbotMaintenanceNotification(existingMWbot);
+            }
+        }
+
+        if (mwbot.getCurrentLocation() != null) {
+            existingMWbot.setCurrentLocation(mwbot.getCurrentLocation());
+        }
+
+        if (mwbot.getErrorMessage() != null) {
+            existingMWbot.setErrorMessage(mwbot.getErrorMessage());
+        }
+
+        existingMWbot.setLastUpdated(LocalDateTime.now());
+
+        return mwbotRepository.save(existingMWbot);
+    }
+
+    public MWbot updateBatteryLevel(Long id, Integer batteryLevel) {
+        if (batteryLevel < 0 || batteryLevel > 100) {
+            throw new BadRequestException("Battery level must be between 0 and 100");
+        }
+
+        MWbot mwbot = getMWbotById(id);
+        mwbot.setBatteryLevel(batteryLevel);
+
+        if (batteryLevel <= lowBatteryThreshold) {
+            notificationService.sendMWbotLowBatteryNotification(mwbot);
+        }
+
+        mwbot.setLastUpdated(LocalDateTime.now());
+
+        return mwbotRepository.save(mwbot);
+    }
+
+    public MWbot toggleMaintenanceMode(Long id, boolean maintenanceRequired) {
+        MWbot mwbot = getMWbotById(id);
+        mwbot.setMaintenanceRequired(maintenanceRequired);
+
+        if (maintenanceRequired) {
+            if (mwbot.getStatus() == MWbot.BotStatus.BUSY && mwbot.getCurrentChargingRequest() != null) {
+                throw new BadRequestException("Cannot put MWbot into maintenance mode while it's busy with a charging request");
+            }
+
+            mwbot.setStatus(MWbot.BotStatus.MAINTENANCE);
+            notificationService.sendMWbotMaintenanceNotification(mwbot);
+        } else {
+            mwbot.setStatus(MWbot.BotStatus.AVAILABLE);
+            mwbot.setErrorMessage(null);
+        }
+
+        mwbot.setLastUpdated(LocalDateTime.now());
+
+        return mwbotRepository.save(mwbot);
+    }
+
+    public List<MWbot> getMWbotsNeedingMaintenance() {
+        return mwbotRepository.findAll().stream()
+                .filter(MWbot::getMaintenanceRequired)
+                .toList();
+    }
+
+    public List<MWbot> getMWbotsWithLowBattery() {
+        return mwbotRepository.findByBatteryLevelLessThan(lowBatteryThreshold);
+    }
+}

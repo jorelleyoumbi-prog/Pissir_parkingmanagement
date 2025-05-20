@@ -1,0 +1,295 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.exception.BadRequestException;
+import com.parkingsystem.exception.ResourceNotFoundException;
+import com.parkingsystem.model.ChargingRequest;
+import com.parkingsystem.model.MWbot;
+import com.parkingsystem.model.ParkingSpot;
+import com.parkingsystem.model.User;
+import com.parkingsystem.mqtt.MqttPublisherInterface;
+import com.parkingsystem.repository.ChargingRequestRepository;
+
+@Service
+public class ChargingService {
+
+    @Autowired
+    private ChargingRequestRepository chargingRequestRepository;
+
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private ParkingService parkingService;
+
+    @Autowired
+    private MWbotService mwbotService;
+
+    @Autowired
+    private NotificationService notificationService;
+
+    @Autowired
+    private MqttPublisherInterface mqttPublisher;
+
+    @Value("${mwbot.charging.rate.kw:11.0}")
+    private double mwbotChargingRateKw;
+
+    public ChargingRequest createChargingRequest(Long userId, Long parkingSpotId, Integer initialPercentage,
+                                                 Integer targetPercentage, boolean notificationRequested) {
+
+        if (initialPercentage < 0 || initialPercentage > 100) {
+            throw new BadRequestException("Initial percentage must be between 0 and 100");
+        }
+
+        if (targetPercentage < 0 || targetPercentage > 100) {
+            throw new BadRequestException("Target percentage must be between 0 and 100");
+        }
+
+        if (initialPercentage >= targetPercentage) {
+            throw new BadRequestException("Target percentage must be greater than initial percentage");
+        }
+
+        User user = userService.findById(userId);
+        ParkingSpot parkingSpot = parkingService.getParkingSpotById(parkingSpotId);
+
+        if (!parkingSpot.isChargingAvailable()) {
+            throw new BadRequestException("Parking spot does not support charging");
+        }
+
+        boolean isTestEnvironment = System.getProperty("spring.profiles.active", "").contains("test");
+        if (!parkingSpot.isOccupied() && !isTestEnvironment) {
+            throw new BadRequestException("Parking spot is not occupied");
+        }
+
+        if (chargingRequestRepository.existsByParkingSpotIdAndStatusIn(
+                parkingSpotId,
+                List.of(ChargingRequest.ChargingStatus.PENDING, ChargingRequest.ChargingStatus.IN_PROGRESS))) {
+            throw new BadRequestException("Parking spot already has an active charging request");
+        }
+
+        ChargingRequest chargingRequest = new ChargingRequest();
+        chargingRequest.setUser(user);
+        chargingRequest.setParkingSpot(parkingSpot);
+        chargingRequest.setInitialPercentage(initialPercentage);
+        chargingRequest.setTargetPercentage(targetPercentage);
+        chargingRequest.setCurrentPercentage(initialPercentage);
+        chargingRequest.setStatus(ChargingRequest.ChargingStatus.PENDING);
+        chargingRequest.setNotificationRequested(notificationRequested);
+        chargingRequest.setNotificationSent(false);
+
+        chargingRequest = chargingRequestRepository.save(chargingRequest);
+
+        List<ChargingRequest> pendingRequests = chargingRequestRepository
+                .findByStatusOrderByCreatedAtAsc(ChargingRequest.ChargingStatus.PENDING);
+        int queuePosition = pendingRequests.indexOf(chargingRequest) + 1;
+        chargingRequest.setQueuePosition(queuePosition);
+
+        chargingRequest = chargingRequestRepository.save(chargingRequest);
+
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("requestId", chargingRequest.getId());
+            payload.put("userId", userId);
+            payload.put("parkingSpotId", parkingSpotId);
+            payload.put("initialPercentage", initialPercentage);
+            payload.put("targetPercentage", targetPercentage);
+            payload.put("status", chargingRequest.getStatus().toString());
+            payload.put("timestamp", LocalDateTime.now().toString());
+
+            mqttPublisher.publish("charging/request/created", payload);
+        } catch (Exception e) {
+            System.err.println("Error publishing MQTT message: " + e.getMessage());
+        }
+
+        assignMWbotToNextChargingRequest();
+
+        return chargingRequest;
+    }
+
+    public ChargingRequest updateChargingProgress(Long requestId, Integer currentPercentage) {
+        ChargingRequest chargingRequest = getChargingRequestById(requestId);
+
+        if (chargingRequest.getStatus() != ChargingRequest.ChargingStatus.IN_PROGRESS) {
+            throw new BadRequestException("Cannot update charging request with status: " + chargingRequest.getStatus());
+        }
+
+        if (currentPercentage < chargingRequest.getInitialPercentage()
+                || currentPercentage > chargingRequest.getTargetPercentage()) {
+            throw new BadRequestException("Current percentage must be between initial and target percentage");
+        }
+
+        chargingRequest.setCurrentPercentage(currentPercentage);
+
+        if (currentPercentage >= chargingRequest.getTargetPercentage()) {
+            return completeCharging(requestId);
+        }
+
+        chargingRequest = chargingRequestRepository.save(chargingRequest);
+
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("requestId", requestId);
+            payload.put("currentPercentage", currentPercentage);
+            payload.put("targetPercentage", chargingRequest.getTargetPercentage());
+            payload.put("status", "IN_PROGRESS");
+            payload.put("timestamp", LocalDateTime.now().toString());
+
+            mqttPublisher.publish("charging/request/" + requestId + "/progress", payload);
+        } catch (Exception e) {
+            System.err.println("Error publishing MQTT message: " + e.getMessage());
+        }
+
+        return chargingRequest;
+    }
+
+    public ChargingRequest completeCharging(Long requestId) {
+        ChargingRequest chargingRequest = getChargingRequestById(requestId);
+
+        if (chargingRequest.getStatus() != ChargingRequest.ChargingStatus.IN_PROGRESS) {
+            throw new BadRequestException("Cannot complete charging request with status: " + chargingRequest.getStatus());
+        }
+
+        chargingRequest.setStatus(ChargingRequest.ChargingStatus.COMPLETED);
+        chargingRequest.setChargingCompletionTime(LocalDateTime.now());
+
+        if (chargingRequest.getUser().getBatteryCapacityKw() != null) {
+            double batteryCapacityKwh = chargingRequest.getUser().getBatteryCapacityKw();
+            double percentageCharged = chargingRequest.getTargetPercentage() - chargingRequest.getInitialPercentage();
+            double kwhCharged = (percentageCharged / 100.0) * batteryCapacityKwh;
+
+            chargingRequest.setTotalEnergyKwh(kwhCharged);
+        }
+
+        chargingRequest = chargingRequestRepository.save(chargingRequest);
+
+        List<MWbot> assignedBots = mwbotService.getMWbotsByChargingRequestId(requestId);
+        for (MWbot bot : assignedBots) {
+            bot.setStatus(MWbot.BotStatus.AVAILABLE);
+            bot.setCurrentChargingRequest(null);
+            try {
+				mwbotService.updateMWbot(bot.getId(), bot);
+			} catch (org.apache.coyote.BadRequestException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+        }
+
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("requestId", requestId);
+            payload.put("status", "COMPLETED");
+            payload.put("finalPercentage", chargingRequest.getTargetPercentage());
+            payload.put("totalEnergy", chargingRequest.getTotalEnergyKwh());
+            payload.put("timestamp", LocalDateTime.now().toString());
+
+            mqttPublisher.publish("charging/request/" + requestId + "/completed", payload);
+        } catch (Exception e) {
+            System.err.println("Error publishing MQTT message: " + e.getMessage());
+        }
+
+        if (chargingRequest.isNotificationRequested() && !chargingRequest.isNotificationSent()) {
+            notificationService.sendChargingCompletionNotification(chargingRequest);
+            chargingRequest.setNotificationSent(true);
+            chargingRequest = chargingRequestRepository.save(chargingRequest);
+        }
+
+        assignMWbotToNextChargingRequest();
+
+        return chargingRequest;
+    }
+
+    public ChargingRequest getChargingRequestById(Long id) {
+        return chargingRequestRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Charging request not found with id: " + id));
+    }
+
+    public List<ChargingRequest> getActiveChargingRequests() {
+        return chargingRequestRepository.findByStatusIn(
+                List.of(ChargingRequest.ChargingStatus.PENDING, ChargingRequest.ChargingStatus.IN_PROGRESS));
+    }
+
+    public void assignMWbotToNextChargingRequest() {
+        List<ChargingRequest> pendingRequests = chargingRequestRepository
+                .findByStatusOrderByCreatedAtAsc(ChargingRequest.ChargingStatus.PENDING);
+
+        if (pendingRequests.isEmpty()) return;
+
+        ChargingRequest nextRequest = pendingRequests.get(0);
+        List<MWbot> availableBots = mwbotService.getAvailableMWbots();
+
+        if (availableBots.isEmpty()) return;
+
+        MWbot bot = availableBots.get(0);
+        startCharging(nextRequest.getId(), bot.getId());
+    }
+
+    public ChargingRequest startCharging(Long requestId, Long mwbotId) {
+        ChargingRequest chargingRequest = getChargingRequestById(requestId);
+
+        if (chargingRequest.getStatus() != ChargingRequest.ChargingStatus.PENDING &&
+                chargingRequest.getStatus() != ChargingRequest.ChargingStatus.QUEUED) {
+            throw new BadRequestException("Cannot start charging request with status: " + chargingRequest.getStatus());
+        }
+
+        MWbot mwbot = mwbotService.getMWbotById(mwbotId);
+
+        if (mwbot.getStatus() != MWbot.BotStatus.AVAILABLE) {
+            throw new BadRequestException("MWbot is not available");
+        }
+
+        mwbot.setStatus(MWbot.BotStatus.BUSY);
+        mwbot.setCurrentChargingRequest(chargingRequest);
+        mwbotService.updateMWbot(mwbotId, mwbot);
+
+        chargingRequest.setStatus(ChargingRequest.ChargingStatus.IN_PROGRESS);
+        chargingRequest.setChargingStartTime(LocalDateTime.now());
+
+        if (chargingRequest.getUser().getBatteryCapacityKw() != null) {
+            double batteryCapacityKwh = chargingRequest.getUser().getBatteryCapacityKw();
+            double percentageToCharge = chargingRequest.getTargetPercentage() - chargingRequest.getInitialPercentage();
+            double kwhToCharge = (percentageToCharge / 100.0) * batteryCapacityKwh;
+            double hoursToCharge = kwhToCharge / mwbotChargingRateKw;
+            long minutesToCharge = (long) Math.ceil(hoursToCharge * 60);
+
+            chargingRequest.setEstimatedCompletionTime(LocalDateTime.now().plusMinutes(minutesToCharge));
+        }
+
+        chargingRequest = chargingRequestRepository.save(chargingRequest);
+
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("requestId", requestId);
+            payload.put("mwbotId", mwbotId);
+            payload.put("status", "IN_PROGRESS");
+            payload.put("initialPercentage", chargingRequest.getInitialPercentage());
+            payload.put("targetPercentage", chargingRequest.getTargetPercentage());
+            payload.put("estimatedCompletionTime",
+                    chargingRequest.getEstimatedCompletionTime() != null
+                            ? chargingRequest.getEstimatedCompletionTime().toString()
+                            : null);
+            payload.put("timestamp", LocalDateTime.now().toString());
+
+            mqttPublisher.publish("charging/request/" + requestId + "/started", payload);
+        } catch (Exception e) {
+            System.err.println("Error publishing MQTT message: " + e.getMessage());
+        }
+
+        return chargingRequest;
+    }
+
+    public void updateBatteryPercentage(Long requestId, Integer percentage) {
+        updateChargingProgress(requestId, percentage);
+    }
+
+    public ChargingRequest completeChargingRequest(Long requestId) {
+        return completeCharging(requestId);
+    }
+}

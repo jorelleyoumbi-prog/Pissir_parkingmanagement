@@ -1,0 +1,126 @@
+package com.parkingsystem.repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import com.parkingsystem.backend.model.Payment;
+import com.parkingsystem.backend.model.User;
+import com.parkingsystem.backend.model.Payment.PaymentStatus;
+import com.parkingsystem.backend.model.Payment.PaymentType;
+
+/**
+ * Repository for Payment entity
+ */
+@Repository
+public interface PaymentRepository extends JpaRepository<Payment, Long> {
+	
+	List<Payment> findByUserId(Long userId);
+    
+    /**
+     * Find all payments for a user
+     * @param user The user to search for
+     * @return List of payments for the user
+     */
+    List<Payment> findByUser(User user);
+    
+    /**
+     * Find all payments with a specific status
+     * @param status The status to search for
+     * @return List of payments with the status
+     */
+    List<Payment> findByStatus(PaymentStatus status);
+    /**
+     * Find top 5 payments by user ID ordered by payment date descending
+     * @param userId The user ID
+     * @return List of payments
+     */
+    List<Payment> findTop5ByUserIdOrderByPaymentDateDesc(Long userId);
+    
+    /**
+     * Find all payments with a specific type
+     * @param type The type to search for
+     * @return List of payments with the type
+     */
+    List<Payment> findByType(PaymentType type);
+    
+    /**
+     * Find all payments for a user with a specific status
+     * @param user The user to search for
+     * @param status The status to search for
+     * @return List of payments for the user with the status
+     */
+    List<Payment> findByUserAndStatus(User user, PaymentStatus status);
+    
+    /**
+     * Find all payments for a user with a specific type
+     * @param user The user to search for
+     * @param type The type to search for
+     * @return List of payments for the user with the type
+     */
+    List<Payment> findByUserAndType(User user, PaymentType type);
+    
+    /**
+     * Find payments made within a date range
+     * @param startDate Start of date range
+     * @param endDate End of date range
+     * @return List of payments within the date range
+     */
+    List<Payment> findByPaymentDateBetween(LocalDateTime startDate, LocalDateTime endDate);
+    
+    /**
+     * Find payments by type within a date range
+     * @param type The payment type
+     * @param startDate Start of date range
+     * @param endDate End of date range
+     * @return List of payments of the type within the date range
+     */
+    List<Payment> findByTypeAndPaymentDateBetween(PaymentType type, LocalDateTime startDate, LocalDateTime endDate);
+    
+    /**
+     * Find payments by transaction ID
+     * @param transactionId The transaction ID to search for
+     * @return List of payments with the transaction ID
+     */
+    List<Payment> findByTransactionId(String transactionId);
+    
+    /**
+     * Calculate total amount for payments of a specific type
+     * @param type The payment type
+     * @return Total amount as a double
+     */
+    @Query("SELECT SUM(p.amount) FROM Payment p WHERE p.type = :type AND p.status = 'COMPLETED'")
+    Double calculateTotalAmountByType(@Param("type") PaymentType type);
+    
+    /**
+     * Calculate total revenue within a date range
+     * @param startDate Start of date range
+     * @param endDate End of date range
+     * @return Total revenue as a double
+     */
+    @Query("SELECT SUM(p.amount) FROM Payment p WHERE p.paymentDate BETWEEN :startDate AND :endDate " +
+           "AND p.status = 'COMPLETED'")
+    Double calculateTotalRevenueBetweenDates(
+        @Param("startDate") LocalDateTime startDate, 
+        @Param("endDate") LocalDateTime endDate
+    );
+    
+    /**
+     * Calculate total revenue by user type within a date range
+     * @param userRole The user role (BASE_USER, PREMIUM_USER)
+     * @param startDate Start of date range
+     * @param endDate End of date range
+     * @return Total revenue as a double
+     */
+    @Query("SELECT SUM(p.amount) FROM Payment p JOIN p.user u WHERE u.role = :userRole " +
+           "AND p.paymentDate BETWEEN :startDate AND :endDate AND p.status = 'COMPLETED'")
+    Double calculateTotalRevenueByUserRoleBetweenDates(
+        @Param("userRole") User.UserRole userRole,
+        @Param("startDate") LocalDateTime startDate, 
+        @Param("endDate") LocalDateTime endDate
+    );
+}

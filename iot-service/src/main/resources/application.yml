@@ -1,0 +1,36 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: iot-service
+
+mqtt:
+  enabled: true
+  broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+  client-id: ${MQTT_CLIENT_ID:iot-service-client}
+  reconnect:
+    delay: ${MQTT_RECONNECT_DELAY:5000}
+    max-attempts: ${MQTT_MAX_RECONNECT_ATTEMPTS:12}
+  topics:
+    prefix: ${MQTT_TOPIC_PREFIX:parkingsystem}
+    parking-entrance: ${MQTT_TOPIC_PREFIX:parkingsystem}/parking/entrance
+    parking-exit: ${MQTT_TOPIC_PREFIX:parkingsystem}/parking/exit
+    parking-spot-status: ${MQTT_TOPIC_PREFIX:parkingsystem}/parking/spots/{spotId}/status
+    mwbot-status: ${MQTT_TOPIC_PREFIX:parkingsystem}/mwbot/{botId}/status
+    mwbot-command: ${MQTT_TOPIC_PREFIX:parkingsystem}/mwbot/{botId}/command
+    charging-request: ${MQTT_TOPIC_PREFIX:parkingsystem}/charging/request
+    charging-progress: ${MQTT_TOPIC_PREFIX:parkingsystem}/charging/{requestId}/progress
+    charging-completed: ${MQTT_TOPIC_PREFIX:parkingsystem}/charging/{requestId}/completed
+
+backend:
+  base-url: ${BACKEND_URL:http://localhost:8080/api}
+  retry:
+    max-attempts: ${BACKEND_RETRY_MAX_ATTEMPTS:3}
+    initial-delay: ${BACKEND_RETRY_INITIAL_DELAY:1000}
+    multiplier: ${BACKEND_RETRY_MULTIPLIER:2.0}
+
+logging:
+  level:
+    root: INFO
+    com.parkingsystem: ${LOG_LEVEL:DEBUG}

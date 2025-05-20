@@ -1,0 +1,23 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: iot-service
+
+mqtt:
+  enabled: true
+  broker-url: tcp://localhost:1883
+  client-id: iot-service-client
+  topics:
+    parking-entrance: parkingsystem/parking/entrance
+    parking-exit: parkingsystem/parking/exit
+    parking-spot-status: parkingsystem/parking/spots/{spotId}/status
+    mwbot-status: parkingsystem/mwbot/{botId}/status
+    mwbot-command: parkingsystem/mwbot/{botId}/command
+    charging-request: parkingsystem/charging/request
+    charging-progress: parkingsystem/charging/{requestId}/progress
+    charging-completed: parkingsystem/charging/{requestId}/completed
+
+backend:
+  base-url: http://localhost:8080/api

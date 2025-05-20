@@ -1,0 +1,84 @@
+package com.parkingsystem.frontend.controller;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+
+import com.parkingsystem.frontend.dto.UserSession;
+import com.parkingsystem.frontend.service.BackendService;
+
+import jakarta.servlet.http.HttpSession;
+
+@Controller
+public class DashboardController {
+
+    @Autowired
+    private BackendService backendService;
+
+    @GetMapping("/dashboard")
+    public String dashboard(HttpSession session, Model model) {
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated()) {
+            return "redirect:/login";
+        }
+        
+        model.addAttribute("user", userSession);
+        
+        // Carica dati diversi a seconda del ruolo
+        if (userSession.isAdmin()) {
+            try {
+                Map<String, Object> dashboardData = backendService.get(
+                        "/admin/dashboard", 
+                        Map.class, 
+                        userSession.getToken()
+                ).block();
+                
+                model.addAttribute("dashboardData", dashboardData);
+            } catch (Exception e) {
+                model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+            }
+            
+            return "admin/dashboard";
+        } else {
+            try {
+                // Carica i pagamenti dell'utente
+                Map<String, Object>[] payments = backendService.get(
+                        "/payments/user", 
+                        Map[].class, 
+                        userSession.getToken()
+                ).block();
+                
+                model.addAttribute("payments", payments);
+                
+                // Se è un utente premium, carica anche le prenotazioni
+                if (userSession.isPremium()) {
+                    Map<String, Object>[] reservations = backendService.get(
+                            "/premium/reservations", 
+                            Map[].class, 
+                            userSession.getToken()
+                    ).block();
+                    
+                    model.addAttribute("reservations", reservations);
+                }
+                
+                // Carica le richieste di ricarica
+                Map<String, Object>[] chargingRequests = backendService.get(
+                        "/charging/user", 
+                        Map[].class, 
+                        userSession.getToken()
+                ).block();
+                
+                model.addAttribute("chargingRequests", chargingRequests);
+                
+            } catch (Exception e) {
+                model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+            }
+            
+            return "dashboard";
+        }
+    }
+}

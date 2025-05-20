@@ -1,0 +1,48 @@
+package com.parkingsystem.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConfigurationProperties(prefix = "mqtt")
+public class MqttProperties {
+    private String brokerUrl;
+    private String clientId;
+    private Topics topics;
+
+    // getters/setters
+
+    public static class Topics {
+        private String request;
+        private String started;
+        private String progress;
+        private String completed;
+        // getters/setters
+    }
+
+	public String getBrokerUrl() {
+		return brokerUrl;
+	}
+
+	public void setBrokerUrl(String brokerUrl) {
+		this.brokerUrl = brokerUrl;
+	}
+
+	public String getClientId() {
+		return clientId;
+	}
+
+	public void setClientId(String clientId) {
+		this.clientId = clientId;
+	}
+
+	public Topics getTopics() {
+		return topics;
+	}
+
+	public void setTopics(Topics topics) {
+		this.topics = topics;
+	}
+    
+    
+}

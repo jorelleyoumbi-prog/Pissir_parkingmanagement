@@ -1,0 +1,329 @@
+package com.parkingsystem.config;
+
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+import org.eclipse.paho.client.mqttv3.IMqttClient;
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.integration.annotation.ServiceActivator;
+import org.springframework.integration.channel.DirectChannel;
+import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
+import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
+import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannelAdapter;
+import org.springframework.integration.mqtt.outbound.MqttPahoMessageHandler;
+import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageHandler;
+import org.springframework.retry.annotation.EnableRetry;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.parkingsystem.service.BackendCommunicationService;
+
+@Configuration
+@EnableRetry
+public class MqttConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(MqttConfig.class);
+
+    @Value("${mqtt.broker-url:tcp://localhost:1883}")
+    private String brokerUrl;
+
+    @Value("${mqtt.client-id:iot-service-}")
+    private String clientId;
+    
+    @Value("${mqtt.reconnect.delay:5000}")
+    private long reconnectDelay;
+    
+    @Value("${mqtt.max.reconnect.attempts:12}")
+    private int maxReconnectAttempts;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    @Autowired
+    private WebClient backendClient;
+    
+    @Autowired
+    private MqttProperties mqttProps;
+    
+    @Autowired
+    private BackendCommunicationService backendService;	
+
+    // --- Spring Integration MQTT Configuration ---
+
+    @Bean
+    public MqttPahoClientFactory mqttClientFactory() {
+        DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setServerURIs(new String[]{ brokerUrl });
+        options.setCleanSession(true);
+        options.setAutomaticReconnect(true);
+        options.setConnectionTimeout(30);
+        options.setKeepAliveInterval(60);
+        factory.setConnectionOptions(options);
+        return factory;
+    }
+
+    @Bean 
+    public MessageChannel mqttOutboundChannel() { 
+        return new DirectChannel(); 
+    }
+
+    @Bean 
+    public MessageChannel mqttInboundChannel() { 
+        return new DirectChannel(); 
+    }
+
+    @Bean
+    @ServiceActivator(inputChannel = "mqttOutboundChannel")
+    public MessageHandler mqttOutboundHandler() {
+        MqttPahoMessageHandler handler = new MqttPahoMessageHandler(clientId + "_out", mqttClientFactory());
+        handler.setAsync(true);
+        handler.setDefaultTopic("parkingsystem/default");
+        handler.setConverter(new DefaultPahoMessageConverter());
+        return handler;
+    }
+
+    @Bean
+    public MqttPahoMessageDrivenChannelAdapter mqttInboundAdapter() {
+        // Sottoscrivi ai topic di interesse
+        MqttPahoMessageDrivenChannelAdapter adapter = new MqttPahoMessageDrivenChannelAdapter(
+            clientId + "_in", 
+            mqttClientFactory(),
+            "parkingsystem/parking/entrance",
+            "parkingsystem/parking/exit",
+            "parkingsystem/parking/spots/+/status",
+            "parkingsystem/mwbot/+/status",
+            "parkingsystem/charging/+/progress",
+            "parkingsystem/charging/+/completed"
+        );
+        
+        adapter.setOutputChannel(mqttInboundChannel());
+        adapter.setConverter(new DefaultPahoMessageConverter());
+        adapter.setQos(1);
+        return adapter;
+    }
+    
+    // --- Direct MQTT Client for more control ---
+    
+    /**
+     * Bean per un client MQTT diretto, utile per pubblicare messaggi in modo più controllato
+     * o per interagire direttamente con il broker MQTT
+     */
+    @Bean
+    public IMqttClient mqttDirectClient() {
+        try {
+            String directClientId = clientId + "_direct_" + UUID.randomUUID().toString();
+            logger.info("Creating direct MQTT client with ID: {}", directClientId);
+            
+            MqttConnectOptions options = new MqttConnectOptions();
+            options.setAutomaticReconnect(true);
+            options.setCleanSession(true);
+            options.setConnectionTimeout(30);
+            options.setKeepAliveInterval(60);
+            
+            IMqttClient mqttClient = new MqttClient(brokerUrl, directClientId, new MemoryPersistence());
+            
+            // Gestione resiliente delle connessioni
+            mqttClient.setCallback(new MqttCallbackExtended() {
+                @Override
+                public void connectComplete(boolean reconnect, String serverURI) {
+                    logger.info("Direct MQTT client connected to broker: {}, reconnect: {}", serverURI, reconnect);
+                    if (reconnect) {
+                        try {
+                            resubscribeTopics(mqttClient);
+                        } catch (MqttException e) {
+                            logger.error("Failed to resubscribe topics after reconnection", e);
+                        }
+                    }
+                }
+    
+                @Override
+                public void connectionLost(Throwable cause) {
+                    logger.warn("Direct MQTT client connection lost: {}", cause.getMessage());
+                }
+    
+                @Override
+                public void messageArrived(String topic, MqttMessage message) {
+                    // Logging di debug per i messaggi ricevuti (già gestiti dall'adapter)
+                    logger.debug("Direct client received message on topic: {}", topic);
+                }
+    
+                @Override
+                public void deliveryComplete(IMqttDeliveryToken token) {
+                    logger.debug("Message delivery completed for token: {}", token.getMessageId());
+                }
+            });
+            
+            try {
+                mqttClient.connect(options);
+                logger.info("Direct MQTT client connected to broker: {}", brokerUrl);
+                resubscribeTopics(mqttClient);
+            } catch (MqttException e) {
+                logger.warn("Direct MQTT client could not connect to broker: {}. Will retry automatically. Error: {}", 
+                          brokerUrl, e.getMessage());
+            }
+            
+            return mqttClient;
+        } catch (MqttException e) {
+            logger.error("Failed to create direct MQTT client", e);
+            throw new RuntimeException("Failed to create direct MQTT client", e);
+        }
+    }
+    
+    private void resubscribeTopics(IMqttClient mqttClient) throws MqttException {
+        // Sottoscrizione ai topic principali (gli stessi dell'adapter)
+        String[] topics = {
+            "parkingsystem/parking/entrance",
+            "parkingsystem/parking/exit", 
+            "parkingsystem/parking/spots/+/status",
+            "parkingsystem/mwbot/+/status", 
+            "parkingsystem/mwbot/+/command",
+            "parkingsystem/charging/+/progress",
+            "parkingsystem/charging/+/completed"
+        };
+        
+        int[] qos = new int[topics.length];
+        for (int i = 0; i < qos.length; i++) {
+            qos[i] = 1; // QoS 1 per tutti i topic
+        }
+        
+        mqttClient.subscribe(topics, qos);
+        logger.info("Direct MQTT client subscribed to {} topics", topics.length);
+    }
+
+    // --- Message Handling Logic ---
+
+    @Bean
+    @ServiceActivator(inputChannel = "mqttInboundChannel")
+    public MessageHandler inboundMessageHandler() {
+        return message -> {
+            String topic = message.getHeaders().get("mqtt_receivedTopic").toString();
+            String payload = message.getPayload().toString();
+            
+            logger.info("Received message on topic: {}", topic);
+            logger.debug("Payload: {}", payload);
+            
+            try {
+                // Pattern matching per i vari topic
+                if (topic.equals("parkingsystem/parking/entrance")) {
+                    handleParkingEntrance(payload);
+                } 
+                else if (topic.equals("parkingsystem/parking/exit")) {
+                    handleParkingExit(payload);
+                }
+                else if (topic.matches("parkingsystem/parking/spots/.+/status")) {
+                    String spotId = topic.split("/")[3];
+                    handleParkingSpotStatus(spotId, payload);
+                }
+                else if (topic.matches("parkingsystem/mwbot/.+/status")) {
+                    String botId = topic.split("/")[2];
+                    handleMWbotStatus(botId, payload);
+                }
+                else if (topic.matches("parkingsystem/charging/.+/progress")) {
+                    String requestId = topic.split("/")[2];
+                    handleChargingProgress(requestId, payload);
+                }
+                else if (topic.matches("parkingsystem/charging/.+/completed")) {
+                    String requestId = topic.split("/")[2];
+                    handleChargingCompleted(requestId, payload);
+                }
+            } catch (Exception e) {
+                logger.error("Error processing MQTT message: " + e.getMessage(), e);
+            }
+        };
+    }
+    
+    private void handleParkingEntrance(String payload) throws JsonProcessingException {
+        JsonNode data = objectMapper.readTree(payload);
+        String carId = data.get("carId").asText();
+        
+        // Chiamata al backend per registrare l'ingresso dell'auto
+        backendService.post("/parking/entrance", payload, Map.class)
+            .subscribe(
+                response -> logger.info("Entrance registered for car: {}", carId),
+                error -> logger.error("Failed to register entrance: {}", error.getMessage())
+            );
+    }
+    
+    private void handleParkingExit(String payload) throws JsonProcessingException {
+        JsonNode data = objectMapper.readTree(payload);
+        String carId = data.get("carId").asText();
+        
+        // Chiamata al backend per registrare l'uscita dell'auto
+        backendService.post("/parking/exit", payload, Map.class)
+            .subscribe(
+                response -> logger.info("Exit registered for car: {}", carId),
+                error -> logger.error("Failed to register exit: {}", error.getMessage())
+            );
+    }
+    
+    private void handleParkingSpotStatus(String spotId, String payload) throws JsonProcessingException {
+        JsonNode data = objectMapper.readTree(payload);
+        String status = data.has("status") ? data.get("status").asText() : "unknown";
+        
+        // Prepara i dati per la chiamata al backend
+        Map<String, Object> requestData = new HashMap<>();
+        requestData.put("spotId", spotId);
+        requestData.put("status", status);
+        requestData.put("timestamp", data.has("timestamp") ? data.get("timestamp").asText() : null);
+        
+        // Chiamata al backend per aggiornare lo stato del posto auto
+        backendService.put("/parking/spots/{spotId}/status", requestData, Map.class, spotId)
+            .subscribe(
+                response -> logger.info("Updated parking spot: {}, status: {}", spotId, status),
+                error -> logger.error("Failed to update parking spot: {}", error.getMessage())
+            );
+    }
+
+    private void handleMWbotStatus(String botId, String payload) throws JsonProcessingException {
+        JsonNode data = objectMapper.readTree(payload);
+        String status = data.has("status") ? data.get("status").asText() : "unknown";
+        
+        // Chiamata al backend per aggiornare lo stato dell'MWbot
+        backendService.put("/mwbots/{botId}/status", payload, Map.class, botId)
+            .subscribe(
+                response -> logger.info("Updated MWbot status: {}, status: {}", botId, status),
+                error -> logger.error("Failed to update MWbot status: {}", error.getMessage())
+            );
+    }
+
+    private void handleChargingProgress(String requestId, String payload) throws JsonProcessingException {
+        JsonNode data = objectMapper.readTree(payload);
+        int percentage = data.has("currentPercentage") ? data.get("currentPercentage").asInt() : 0;
+        
+        // Chiamata al backend per aggiornare il progresso della ricarica
+        backendService.put("/charging/{requestId}/progress", payload, Map.class, requestId)
+            .subscribe(
+                response -> logger.info("Updated charging progress: {}, percentage: {}", requestId, percentage),
+                error -> logger.error("Failed to update charging progress: {}", error.getMessage())
+            );
+    }
+
+    private void handleChargingCompleted(String requestId, String payload) throws JsonProcessingException {
+        // Chiamata al backend per completare la ricarica
+        backendService.put("/charging/{requestId}/complete", payload, Map.class, requestId)
+            .subscribe(
+                response -> logger.info("Completed charging: {}", requestId),
+                error -> logger.error("Failed to complete charging: {}", error.getMessage())
+            );
+    }
+}

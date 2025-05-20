@@ -1,0 +1,148 @@
+package com.parkingsystem.service;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.retry.RetryCallback;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+
+import reactor.core.publisher.Mono;
+
+/**
+ * Servizio centralizzato per gestire le comunicazioni con il backend.
+ * Include gestione degli errori e tentativi di ripetizione.
+ */
+@Service
+public class BackendCommunicationService {
+
+    private static final Logger logger = LoggerFactory.getLogger(BackendCommunicationService.class);
+
+    @Autowired
+    private WebClient backendClient;
+    
+    @Autowired
+    private RetryTemplate retryTemplate;
+
+
+
+    /**
+     * Effettua una chiamata GET al backend con ripetizione automatica in caso di errore.
+     */
+    public <T> Mono<T> get(String path, Class<T> responseType) {
+        logger.debug("Making GET request to backend: {}", path);
+        
+        try {
+            return retryTemplate.execute((RetryCallback<Mono<T>, Exception>) context -> {
+                logger.debug("Attempt {} for GET to {}", context.getRetryCount()+1, path);
+                return backendClient.get()
+                        .uri(path)
+                        .retrieve()
+                        .bodyToMono(responseType)
+                        .doOnSuccess(response -> logger.debug("Successful GET to {}", path))
+                        .doOnError(error -> logger.error("Error in GET to {}: {}", path, error.getMessage()));
+            });
+        } catch (Exception e) {
+            logger.error("All retry attempts failed for GET to {}: {}", path, e.getMessage());
+            return Mono.error(e);
+        }
+    }
+
+    /**
+     * Effettua una chiamata POST al backend con ripetizione automatica in caso di errore.
+     */
+    @Retryable(value = {WebClientResponseException.class}, 
+                maxAttemptsExpression = "${backend.retry.max-attempts:3}",
+                backoff = @Backoff(delayExpression = "${backend.retry.initial-delay:1000}", 
+                                 multiplierExpression = "${backend.retry.multiplier:2.0}"))
+    public <T> Mono<T> post(String path, Object requestBody, Class<T> responseType) {
+        logger.debug("Making POST request to backend: {}", path);
+        
+        return backendClient.post()
+                .uri(path)
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(responseType)
+                .doOnSuccess(response -> logger.debug("Successful POST to {}", path))
+                .doOnError(error -> logger.error("Error in POST to {}: {}", path, error.getMessage()));
+    }
+
+    /**
+     * Effettua una chiamata PUT al backend con ripetizione automatica in caso di errore.
+     */
+    @Retryable(value = {WebClientResponseException.class}, 
+                maxAttemptsExpression = "${backend.retry.max-attempts:3}",
+                backoff = @Backoff(delayExpression = "${backend.retry.initial-delay:1000}", 
+                                 multiplierExpression = "${backend.retry.multiplier:2.0}"))
+    public <T> Mono<T> put(String path, Object requestBody, Class<T> responseType) {
+        logger.debug("Making PUT request to backend: {}", path);
+        
+        return backendClient.put()
+                .uri(path)
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(responseType)
+                .doOnSuccess(response -> logger.debug("Successful PUT to {}", path))
+                .doOnError(error -> logger.error("Error in PUT to {}: {}", path, error.getMessage()));
+    }
+    
+    /**
+     * Effettua una chiamata PUT al backend con parametri nel path e ripetizione automatica in caso di errore.
+     */
+    @Retryable(value = {WebClientResponseException.class}, 
+               maxAttemptsExpression = "${backend.retry.max-attempts:3}",
+               backoff = @Backoff(delayExpression = "${backend.retry.initial-delay:1000}", 
+                                  multiplierExpression = "${backend.retry.multiplier:2.0}"))
+    public <T> Mono<T> put(String path, Object requestBody, Class<T> responseType, Object... uriVariables) {
+        logger.debug("Making PUT request to backend: {}", path);
+        
+        return backendClient.put()
+                .uri(path, uriVariables)
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(responseType)
+                .doOnSuccess(response -> logger.debug("Successful PUT to {}", path))
+                .doOnError(error -> logger.error("Error in PUT to {}: {}", path, error.getMessage()));
+    }
+    
+    /**
+     * Effettua una chiamata GET al backend con parametri nel path e ripetizione automatica in caso di errore.
+     */
+    @Retryable(value = {WebClientResponseException.class}, 
+                maxAttemptsExpression = "${backend.retry.max-attempts:3}",
+                backoff = @Backoff(delayExpression = "${backend.retry.initial-delay:1000}", 
+                                 multiplierExpression = "${backend.retry.multiplier:2.0}"))
+    public <T> Mono<T> get(String path, Class<T> responseType, Object... uriVariables) {
+        logger.debug("Making GET request to backend: {}", path);
+        
+        return backendClient.get()
+                .uri(path, uriVariables)
+                .retrieve()
+                .bodyToMono(responseType)
+                .doOnSuccess(response -> logger.debug("Successful GET to {}", path))
+                .doOnError(error -> logger.error("Error in GET to {}: {}", path, error.getMessage()));
+    }
+
+    /**
+     * Effettua una chiamata POST al backend con parametri nel path e ripetizione automatica in caso di errore.
+     */
+    @Retryable(value = {WebClientResponseException.class}, 
+                maxAttemptsExpression = "${backend.retry.max-attempts:3}",
+                backoff = @Backoff(delayExpression = "${backend.retry.initial-delay:1000}", 
+                                 multiplierExpression = "${backend.retry.multiplier:2.0}"))
+    public <T> Mono<T> post(String path, Object requestBody, Class<T> responseType, Object... uriVariables) {
+        logger.debug("Making POST request to backend: {}", path);
+        
+        return backendClient.post()
+                .uri(path, uriVariables)
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(responseType)
+                .doOnSuccess(response -> logger.debug("Successful POST to {}", path))
+                .doOnError(error -> logger.error("Error in POST to {}: {}", path, error.getMessage()));
+    }
+}

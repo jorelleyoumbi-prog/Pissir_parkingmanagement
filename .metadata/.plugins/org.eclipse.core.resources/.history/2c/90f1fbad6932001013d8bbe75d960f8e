@@ -1,0 +1,5 @@
+package com.parkingsystem.service;
+
+public class BackendCommunicationService {
+
+}

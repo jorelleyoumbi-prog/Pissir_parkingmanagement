@@ -1,0 +1,12 @@
+2025-05-16 17:39:24.416 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.5 with PID 6924 (C:\Users\Dylan\Desktop\sp01\iot-service\target\classes started by Dylan in C:\Users\Dylan\Desktop\sp01\iot-service)
+2025-05-16 17:39:24.417 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-05-16 17:39:24.418 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-05-16 17:39:26.188 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 2.274 seconds (process running for 3.25)
+2025-05-16 17:40:46.222 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.5 with PID 6924 (C:\Users\Dylan\Desktop\sp01\iot-service\target\classes started by Dylan in C:\Users\Dylan\Desktop\sp01\iot-service)
+2025-05-16 17:40:46.222 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-05-16 17:40:46.222 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-05-16 17:40:46.504 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 0.316 seconds (process running for 83.564)
+2025-05-16 18:51:24.667 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.5 with PID 6924 (C:\Users\Dylan\Desktop\sp01\iot-service\target\classes started by Dylan in C:\Users\Dylan\Desktop\sp01\iot-service)
+2025-05-16 18:51:24.667 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-05-16 18:51:24.667 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-05-16 18:51:25.107 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 0.483 seconds (process running for 4322.107)

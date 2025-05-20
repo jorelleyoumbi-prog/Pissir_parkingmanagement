@@ -1,0 +1,5 @@
+package com.parkingsystem.backend.publisher.copy;
+
+public class NotificationPublisher {
+
+}

@@ -1,0 +1,62 @@
+package com.parkingsystem.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.retry.backoff.ExponentialBackOffPolicy;
+import org.springframework.retry.policy.SimpleRetryPolicy;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class WebClientConfig {
+    
+    @Value("${backend.base-url:http://localhost:8080/api}")
+    private String backendBaseUrl;
+    
+    @Value("${backend.retry.max-attempts:3}")
+    private int maxAttempts;
+    
+    @Value("${backend.retry.initial-delay:1000}")
+    private long initialDelay;
+    
+    @Value("${backend.retry.multiplier:2.0}")
+    private double multiplier;
+
+    @Bean
+    public WebClient backendClient() {
+        return WebClient.builder()
+            .baseUrl(backendBaseUrl)
+            .build();
+    }
+    
+    /**
+     * RetryTemplate configurato per le chiamate al backend
+     * Fornisce un meccanismo di retry robusto che può essere iniettato in altri servizi
+     */
+    @Bean
+    public RetryTemplate retryTemplate() {
+        // Configurazione della politica di backoff esponenziale
+        ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
+        backOffPolicy.setInitialInterval(initialDelay);
+        backOffPolicy.setMultiplier(multiplier);
+        backOffPolicy.setMaxInterval(30000); // Massimo 30 secondi di attesa
+        
+        // Configurazione della politica di retry
+        Map<Class<? extends Throwable>, Boolean> retryableExceptions = new HashMap<>();
+        retryableExceptions.put(Exception.class, true);
+        
+        SimpleRetryPolicy retryPolicy = new SimpleRetryPolicy(
+                maxAttempts, retryableExceptions, true);
+        
+        // Creazione del template di retry con le politiche configurate
+        RetryTemplate retryTemplate = new RetryTemplate();
+        retryTemplate.setBackOffPolicy(backOffPolicy);
+        retryTemplate.setRetryPolicy(retryPolicy);
+        
+        return retryTemplate;
+    }
+}

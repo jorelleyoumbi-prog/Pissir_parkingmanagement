@@ -1,0 +1,307 @@
+package com.parkingsystem.backend.controller;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.parkingsystem.backend.dto.MWbotDto;
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.model.MWbot;
+import com.parkingsystem.service.MWbotService;
+
+/**
+ * Controller per le operazioni relative ai MWbot
+ */
+@RestController
+@RequestMapping("/api/mwbots")
+public class MWbotController {
+
+    @Autowired
+    private MWbotService mwbotService;
+    
+    /**
+     * Ottieni tutti i MWbot
+     * @return Risposta con tutti i MWbot
+     */
+    @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getAllMWbots() {
+        try {
+            List<MWbot> mwbots = mwbotService.getAllMWbots();
+
+            // Converte i MWbot in DTO
+            List<MWbotDto> mwbotDtos = mwbots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(mwbotDtos);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to get MWbots"));
+        }
+    }
+
+
+    /**
+     * Ottieni un MWbot per ID
+     * @param id L'ID del MWbot
+     * @return Risposta con il MWbot
+     */
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getMWbot(@PathVariable Long id) {
+        try {
+            MWbot mwbot = mwbotService.getMWbotById(id);
+            return ResponseEntity.ok(convertToDto(mwbot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Ottieni i MWbot disponibili
+     * @return Risposta con i MWbot disponibili
+     */
+    @GetMapping("/available")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getAvailableMWbots() {
+        try {
+            List<MWbot> mwbots = mwbotService.getAvailableMWbots();
+            
+            // Converte i MWbot in DTO
+            List<MWbotDto> mwbotDtos = mwbots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(mwbotDtos);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Ottieni i MWbot che necessitano di manutenzione
+     * @return Risposta con i MWbot che necessitano di manutenzione
+     */
+    @GetMapping("/maintenance")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getMWbotsNeedingMaintenance() {
+        try {
+            List<MWbot> mwbots = mwbotService.getMWbotsNeedingMaintenance();
+            
+            // Converte i MWbot in DTO
+            List<MWbotDto> mwbotDtos = mwbots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(mwbotDtos);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Ottieni i MWbot con batteria scarica
+     * @param threshold La soglia del livello di batteria
+     * @return Risposta con i MWbot con batteria scarica
+     */
+    @GetMapping("/low-battery")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getMWbotsWithLowBattery() {
+        try {
+            List<MWbot> mwbots = mwbotService.getMWbotsWithLowBattery();
+            
+            // Converte i MWbot in DTO
+            List<MWbotDto> mwbotDtos = mwbots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(mwbotDtos);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Crea un nuovo MWbot
+     * @param requestBody I dettagli del MWbot
+     * @return Risposta con il MWbot creato
+     */
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> createMWbot(@RequestBody MWbotDto mwbotDto) {
+        try {
+            // Converte il DTO in entità
+            MWbot mwbot = new MWbot();
+            mwbot.setBotId(mwbotDto.getBotId());
+            
+            // Imposta valori di default se non forniti
+            if (mwbotDto.getBatteryLevel() != null) {
+                mwbot.setBatteryLevel(mwbotDto.getBatteryLevel());
+            } else {
+                mwbot.setBatteryLevel(100);
+            }
+            
+            if (mwbotDto.getChargingRateKw() != null) {
+                mwbot.setChargingRateKw(mwbotDto.getChargingRateKw());
+            } else {
+                mwbot.setChargingRateKw(11.0);
+            }
+            
+            mwbot.setMaintenanceRequired(false);
+            mwbot.setStatus(MWbot.BotStatus.AVAILABLE);
+            mwbot.setLastUpdated(LocalDateTime.now());
+            
+            // Crea il MWbot
+            MWbot createdMWbot = mwbotService.createMWbot(mwbot);
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertToDto(createdMWbot));
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Errore durante la creazione del MWbot: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Aggiorna lo stato di un MWbot
+     * @param id L'ID del MWbot
+     * @param requestBody Il nuovo stato
+     * @return Risposta con il MWbot aggiornato
+     */
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateMWbotStatus(@PathVariable Long id, @RequestBody Map<String, Object> requestBody) {
+        try {
+            // Estrai lo stato
+            if (!requestBody.containsKey("status")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Lo stato è obbligatorio"));
+            }
+            String statusStr = requestBody.get("status").toString();
+            
+            MWbot.BotStatus status;
+            try {
+                status = MWbot.BotStatus.valueOf(statusStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Stato non valido: " + statusStr));
+            }
+            
+            // Ottieni il MWbot corrente
+            MWbot mwbot = mwbotService.getMWbotById(id);
+            
+            // Aggiorna lo stato
+            mwbot.setStatus(status);
+            mwbot.setLastUpdated(LocalDateTime.now());
+            
+            // Salva gli aggiornamenti
+            MWbot updatedMWbot = mwbotService.updateMWbot(id, mwbot);
+            
+            return ResponseEntity.ok(convertToDto(updatedMWbot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Aggiorna il livello di batteria di un MWbot
+     * @param id L'ID del MWbot
+     * @param requestBody Il nuovo livello di batteria
+     * @return Risposta con il MWbot aggiornato
+     */
+    @PutMapping("/{id}/battery")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateMWbotBatteryLevel(@PathVariable Long id, @RequestBody Map<String, Object> requestBody) {
+        try {
+            // Estrai il livello di batteria
+            if (!requestBody.containsKey("batteryLevel")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Il livello di batteria è obbligatorio"));
+            }
+            
+            Integer batteryLevel;
+            try {
+                batteryLevel = Integer.parseInt(requestBody.get("batteryLevel").toString());
+            } catch (NumberFormatException e) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Il livello di batteria deve essere un numero"));
+            }
+            
+            // Aggiorna il livello di batteria
+            MWbot updatedMWbot = mwbotService.updateBatteryLevel(id, batteryLevel);
+            
+            return ResponseEntity.ok(convertToDto(updatedMWbot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Imposta lo stato di manutenzione richiesto per un MWbot
+     * @param id L'ID del MWbot
+     * @param requestBody Lo stato di manutenzione richiesto
+     * @return Risposta con il MWbot aggiornato
+     */
+    @PutMapping("/{id}/maintenance")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> setMaintenanceRequired(@PathVariable Long id, @RequestBody Map<String, Object> requestBody) {
+        try {
+            // Estrai lo stato di manutenzione
+            if (!requestBody.containsKey("maintenanceRequired")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Il campo manutenzione è obbligatorio"));
+            }
+            boolean maintenanceRequired = Boolean.parseBoolean(requestBody.get("maintenanceRequired").toString());
+            
+            // Attiva/disattiva la modalità manutenzione
+            MWbot updatedMWbot = mwbotService.toggleMaintenanceMode(id, maintenanceRequired);
+            
+            return ResponseEntity.ok(convertToDto(updatedMWbot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Converte un MWbot in DTO
+     * @param mwbot Il MWbot
+     * @return Il DTO del MWbot
+     */
+    private MWbotDto convertToDto(MWbot mwbot) {
+        MWbotDto dto = new MWbotDto();
+        
+        dto.setId(mwbot.getId());
+        dto.setBotId(mwbot.getBotId());
+        dto.setStatus(mwbot.getStatus().toString());
+        dto.setBatteryLevel(mwbot.getBatteryLevel());
+        dto.setChargingRateKw(mwbot.getChargingRateKw());
+        dto.setMaintenanceRequired(mwbot.isMaintenanceRequired());
+        dto.setCurrentLocation(mwbot.getCurrentLocation());
+        dto.setErrorMessage(mwbot.getErrorMessage());
+        
+        if (mwbot.getCurrentChargingRequest() != null) {
+            dto.setCurrentChargingRequestId(mwbot.getCurrentChargingRequest().getId());
+        }
+        
+        return dto;
+    }
+}

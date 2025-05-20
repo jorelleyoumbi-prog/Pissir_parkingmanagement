@@ -1,0 +1,147 @@
+package com.parkingsystem.backend.model;
+
+import java.time.LocalDateTime;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+
+/**
+ * Entity representing a Mobile Wireless Bot
+ */
+@Entity
+@Table(name = "mwbots")
+public class MWbot {
+
+    /**
+     * Bot status enum
+     */
+    public enum BotStatus {
+        AVAILABLE,
+        BUSY,
+        IDLE,           // Aggiunta dello stato IDLE
+        RECHARGING,     // Aggiunta dello stato RECHARGING
+        MAINTENANCE
+    }
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, unique = true)
+    private String botId;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private BotStatus status;
+    
+    @Column(nullable = false)
+    private Integer batteryLevel;
+    
+    @Column(nullable = false)
+    private Double chargingRateKw;
+    
+    @ManyToOne
+    @JoinColumn(name = "current_charging_request_id")
+    private ChargingRequest currentChargingRequest;
+    
+    private Boolean maintenanceRequired;
+    
+    private String currentLocation;
+    
+    private String errorMessage;
+    
+    private LocalDateTime lastUpdated;
+
+    // Getters and Setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getBotId() {
+        return botId;
+    }
+
+    public void setBotId(String botId) {
+        this.botId = botId;
+    }
+
+    public BotStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(BotStatus status) {
+        this.status = status;
+    }
+
+    public Integer getBatteryLevel() {
+        return batteryLevel;
+    }
+
+    public void setBatteryLevel(Integer batteryLevel) {
+        this.batteryLevel = batteryLevel;
+    }
+
+    public Double getChargingRateKw() {
+        return chargingRateKw;
+    }
+
+    public void setChargingRateKw(Double chargingRateKw) {
+        this.chargingRateKw = chargingRateKw;
+    }
+
+    public ChargingRequest getCurrentChargingRequest() {
+        return currentChargingRequest;
+    }
+
+    public void setCurrentChargingRequest(ChargingRequest currentChargingRequest) {
+        this.currentChargingRequest = currentChargingRequest;
+    }
+
+    public Boolean isMaintenanceRequired() {
+        return maintenanceRequired != null ? maintenanceRequired : false;
+    }
+    
+    public Boolean getMaintenanceRequired() {
+        return maintenanceRequired != null ? maintenanceRequired : false;
+    }
+
+    public void setMaintenanceRequired(Boolean maintenanceRequired) {
+        this.maintenanceRequired = maintenanceRequired;
+    }
+
+    public String getCurrentLocation() {
+        return currentLocation;
+    }
+
+    public void setCurrentLocation(String currentLocation) {
+        this.currentLocation = currentLocation;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
+    }
+
+    public LocalDateTime getLastUpdated() {
+        return lastUpdated;
+    }
+
+    public void setLastUpdated(LocalDateTime lastUpdated) {
+        this.lastUpdated = lastUpdated;
+    }
+}

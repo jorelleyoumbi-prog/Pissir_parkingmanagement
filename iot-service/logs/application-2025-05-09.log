@@ -1,0 +1,72 @@
+2025-05-09 18:11:54.199 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.5 with PID 19648 (C:\Users\Dylan\Desktop\sp01\iot-service\target\classes started by Dylan in C:\Users\Dylan\Desktop\sp01\iot-service)
+2025-05-09 18:11:54.202 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-05-09 18:11:54.203 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-05-09 18:11:56.130 [restartedMain] INFO  o.a.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:11:56.135 [restartedMain] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-05-09 18:11:56.135 [restartedMain] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.40]
+2025-05-09 18:11:56.214 [restartedMain] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-05-09 18:11:57.159 [restartedMain] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2025-05-09 18:11:57.374 [restartedMain] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection com.mysql.cj.jdbc.ConnectionImpl@2d5371
+2025-05-09 18:11:57.379 [restartedMain] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2025-05-09 18:11:57.489 [restartedMain] WARN  org.hibernate.orm.deprecation - HHH90000025: MySQL8Dialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2025-05-09 18:11:57.490 [restartedMain] WARN  org.hibernate.orm.deprecation - HHH90000026: MySQL8Dialect has been deprecated; use org.hibernate.dialect.MySQLDialect instead
+2025-05-09 18:11:58.779 [restartedMain] WARN  o.s.b.a.s.s.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: 084de24b-b007-41f4-b537-86924e90fb68
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2025-05-09 18:11:59.220 [restartedMain] INFO  o.a.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:11:59.253 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 5.656 seconds (process running for 6.695)
+2025-05-09 18:16:41.374 [tomcat-shutdown] INFO  o.a.coyote.http11.Http11NioProtocol - Pausing ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:41.563 [Thread-5] INFO  o.a.coyote.http11.Http11NioProtocol - Stopping ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:41.580 [Thread-5] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2025-05-09 18:16:41.597 [Thread-5] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
+2025-05-09 18:16:41.766 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.5 with PID 19648 (C:\Users\Dylan\Desktop\sp01\iot-service\target\classes started by Dylan in C:\Users\Dylan\Desktop\sp01\iot-service)
+2025-05-09 18:16:41.767 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-05-09 18:16:41.767 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-05-09 18:16:42.466 [restartedMain] INFO  o.a.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:42.468 [restartedMain] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-05-09 18:16:42.468 [restartedMain] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.40]
+2025-05-09 18:16:42.512 [restartedMain] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-05-09 18:16:42.650 [restartedMain] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Starting...
+2025-05-09 18:16:42.662 [restartedMain] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-2 - Added connection com.mysql.cj.jdbc.ConnectionImpl@47808dbd
+2025-05-09 18:16:42.663 [restartedMain] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Start completed.
+2025-05-09 18:16:42.666 [restartedMain] WARN  org.hibernate.orm.deprecation - HHH90000025: MySQL8Dialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2025-05-09 18:16:42.666 [restartedMain] WARN  org.hibernate.orm.deprecation - HHH90000026: MySQL8Dialect has been deprecated; use org.hibernate.dialect.MySQLDialect instead
+2025-05-09 18:16:43.103 [restartedMain] WARN  o.s.b.a.s.s.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: 060b4ebe-5fc3-49fd-82e6-643444791729
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2025-05-09 18:16:43.267 [restartedMain] INFO  o.a.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:43.286 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 1.611 seconds (process running for 290.727)
+2025-05-09 18:16:44.634 [tomcat-shutdown] INFO  o.a.coyote.http11.Http11NioProtocol - Pausing ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:44.771 [Thread-7] INFO  o.a.coyote.http11.Http11NioProtocol - Stopping ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:44.774 [Thread-7] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Shutdown initiated...
+2025-05-09 18:16:44.777 [Thread-7] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-2 - Shutdown completed.
+2025-05-09 18:16:44.862 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.5 with PID 19648 (C:\Users\Dylan\Desktop\sp01\iot-service\target\classes started by Dylan in C:\Users\Dylan\Desktop\sp01\iot-service)
+2025-05-09 18:16:44.862 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-05-09 18:16:44.862 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-05-09 18:16:45.072 [restartedMain] INFO  o.a.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:45.072 [restartedMain] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-05-09 18:16:45.072 [restartedMain] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.40]
+2025-05-09 18:16:45.090 [restartedMain] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-05-09 18:16:45.148 [restartedMain] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-3 - Starting...
+2025-05-09 18:16:45.155 [restartedMain] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-3 - Added connection com.mysql.cj.jdbc.ConnectionImpl@1a047944
+2025-05-09 18:16:45.156 [restartedMain] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-3 - Start completed.
+2025-05-09 18:16:45.157 [restartedMain] WARN  org.hibernate.orm.deprecation - HHH90000025: MySQL8Dialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2025-05-09 18:16:45.157 [restartedMain] WARN  org.hibernate.orm.deprecation - HHH90000026: MySQL8Dialect has been deprecated; use org.hibernate.dialect.MySQLDialect instead
+2025-05-09 18:16:45.299 [restartedMain] WARN  o.s.b.a.s.s.UserDetailsServiceAutoConfiguration - 
+
+Using generated security password: 8b0040f6-27fa-4465-8964-a3c94a9da4bf
+
+This generated password is for development use only. Your security configuration must be updated before running your application in production.
+
+2025-05-09 18:16:45.363 [restartedMain] INFO  o.a.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:45.380 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 0.553 seconds (process running for 292.822)
+2025-05-09 18:16:46.723 [tomcat-shutdown] INFO  o.a.coyote.http11.Http11NioProtocol - Pausing ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:46.789 [RMI TCP Connection(8)-127.0.0.1] INFO  o.a.coyote.http11.Http11NioProtocol - Stopping ProtocolHandler ["http-nio-8082"]
+2025-05-09 18:16:46.792 [RMI TCP Connection(8)-127.0.0.1] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-3 - Shutdown initiated...
+2025-05-09 18:16:46.795 [RMI TCP Connection(8)-127.0.0.1] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-3 - Shutdown completed.

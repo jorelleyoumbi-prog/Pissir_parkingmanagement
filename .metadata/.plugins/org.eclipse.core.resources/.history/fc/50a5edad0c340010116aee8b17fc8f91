@@ -1,0 +1,30 @@
+package com.parkingsystem.frontend.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class UserSession {
+    private Long id;
+    private String username;
+    private String role;
+    private String token;
+    private String email;
+    private String fullName;
+    private boolean authenticated;
+
+    public boolean isAuthenticated() {
+        return authenticated;
+    }
+
+    public boolean isAdmin() {
+        return "ADMIN".equalsIgnoreCase(role);
+    }
+
+    public boolean isPremium() {
+        return "PREMIUM".equalsIgnoreCase(role);
+    }
+}

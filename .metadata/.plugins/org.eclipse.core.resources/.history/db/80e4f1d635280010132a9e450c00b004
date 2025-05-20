@@ -1,0 +1,370 @@
+package com.parkingsystem.backend.controller;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.parkingsystem.backend.dto.MWbotDto;
+import com.parkingsystem.backend.dto.ParkingSpotDto;
+import com.parkingsystem.backend.dto.UserDto;
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.model.MWbot;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.model.User;
+import com.parkingsystem.service.ChargingService;
+import com.parkingsystem.service.MWbotService;
+import com.parkingsystem.service.NotificationService;
+import com.parkingsystem.service.ParkingService;
+import com.parkingsystem.service.PaymentService;
+import com.parkingsystem.service.ReservationService;
+import com.parkingsystem.service.UserService;
+
+import jakarta.validation.Valid;
+
+/**
+ * Controller per le operazioni di amministrazione.
+ * Questo controller gestisce le operazioni di amministrazione relative agli utenti, ai posti auto,
+ * ai robot di ricarica (MWbot) e alle statistiche.
+ */
+@RestController
+@RequestMapping("/api/admin")
+@PreAuthorize("hasRole('ADMIN')")
+public class AdminController {
+
+    @Autowired
+    private UserService userService;
+    
+    @Autowired
+    private ParkingService parkingService;
+    
+    @Autowired
+    private ReservationService reservationService;
+    
+    @Autowired
+    private ChargingService chargingService;
+    
+    @Autowired
+    private MWbotService mwbotService;
+    
+    @Autowired
+    private PaymentService paymentService;
+    
+    @Autowired
+    private NotificationService notificationService;
+    
+    @Value("${parking.hourly.rate:3.0}")
+    private double parkingHourlyRate;
+    
+    @Value("${charging.rate.per.kwh:0.35}")
+    private double chargingRatePerKwh;
+
+    /**
+     * Ottiene i dati per il dashboard dell'amministratore.
+     * 
+     * @return Response con i dati del dashboard
+     */
+    @GetMapping("/dashboard")
+    public ResponseEntity<?> getDashboardData() {
+        try {
+            Map<String, Object> dashboardData = new HashMap<>();
+            
+            // Statistiche sugli utenti
+            long totalUsers = userService.getAllUsers().size();
+            long premiumUsers = userService.getAllPremiumUsers().size();
+            
+            // Statistiche sui posti auto
+            List<ParkingSpot> allSpots = parkingService.getAllParkingSpots();
+            long totalSpots = allSpots.size();
+            long occupiedSpots = allSpots.stream().filter(ParkingSpot::isOccupied).count();
+            long chargingSpots = allSpots.stream().filter(ParkingSpot::isChargingAvailable).count();
+            
+            // Statistiche sui robot di ricarica
+            List<MWbot> allBots = mwbotService.getAllMWbots();
+            long totalBots = allBots.size();
+            long availableBots = allBots.stream().filter(bot -> bot.getStatus() == MWbot.BotStatus.AVAILABLE).count();
+            long busyBots = allBots.stream().filter(bot -> bot.getStatus() == MWbot.BotStatus.BUSY).count();
+            long maintenanceBots = allBots.stream().filter(MWbot::isMaintenanceRequired).count();
+            
+            // Compilazione dei dati per il dashboard
+            Map<String, Object> userStats = new HashMap<>();
+            userStats.put("total", totalUsers);
+            userStats.put("premium", premiumUsers);
+            
+            Map<String, Object> parkingStats = new HashMap<>();
+            parkingStats.put("total", totalSpots);
+            parkingStats.put("occupied", occupiedSpots);
+            parkingStats.put("charging", chargingSpots);
+            
+            Map<String, Object> mwbotStats = new HashMap<>();
+            mwbotStats.put("total", totalBots);
+            mwbotStats.put("available", availableBots);
+            mwbotStats.put("busy", busyBots);
+            mwbotStats.put("maintenance", maintenanceBots);
+            
+            dashboardData.put("users", userStats);
+            dashboardData.put("parking", parkingStats);
+            dashboardData.put("mwbots", mwbotStats);
+            
+            return ResponseEntity.ok(dashboardData);
+        } catch (Exception e) {
+            // Gestione degli errori durante il recupero dei dati del dashboard
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to get dashboard data: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Assegna un MWbot alla prossima richiesta di ricarica in coda.
+     * 
+     * @return Response con il messaggio di successo
+     */
+    @PostMapping("/mwbots/assign")
+    public ResponseEntity<?> assignMWbotToNextRequest() {
+        try {
+            // Assegna un MWbot alla prossima richiesta di ricarica
+            chargingService.assignMWbotToNextChargingRequest();
+            return ResponseEntity.ok(Map.of("message", "MWbot assigned to next charging request in the queue"));
+        } catch (Exception e) {
+            // Gestione degli errori durante l'assegnazione del MWbot
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to assign MWbot: " + e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/rates")
+    public ResponseEntity<?> getRates() {
+        try {
+            // Recupera le tariffe impostate (potresti voler usare una classe configurazione o un database)
+            Map<String, Double> rates = new HashMap<>();
+            rates.put("baseRate", parkingHourlyRate);
+            rates.put("chargingRate", chargingRatePerKwh);
+            return ResponseEntity.ok(rates);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to get rates"));
+        }
+    }
+
+    @PutMapping("/rates")
+    public ResponseEntity<?> updateRates(@RequestBody Map<String, Double> rates) {
+        try {
+            // Aggiorna le tariffe (questo potrebbe essere gestito tramite una classe di configurazione o un database)
+            double baseRate = rates.getOrDefault("baseRate", 0.0);
+            double chargingRate = rates.getOrDefault("chargingRate", 0.0);
+            
+            // Settarle in qualche configurazione o database (sostituisci questa parte con la logica effettiva)
+            this.parkingHourlyRate = baseRate;
+            this.chargingRatePerKwh = chargingRate;
+            
+            return ResponseEntity.ok(Map.of("message", "Rates updated successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Failed to update rates"));
+        }
+    }
+
+
+    /**
+     * Ottiene tutti gli utenti.
+     * 
+     * @return Response con la lista di tutti gli utenti
+     */
+    @GetMapping("/users")
+    public ResponseEntity<?> getAllUsers() {
+        try {
+            // Recupera la lista di tutti gli utenti
+            List<User> users = userService.getAllUsers();
+            
+            // Converte gli utenti in DTO per la risposta
+            List<UserDto> userDtos = users.stream().map(user -> {
+                UserDto dto = new UserDto();
+                dto.setId(user.getId());
+                dto.setUsername(user.getUsername());
+                dto.setEmail(user.getEmail());
+                dto.setFullName(user.getFullName());
+                dto.setRole(user.getRole().toString());
+                dto.setCarModel(user.getCarModel());
+                dto.setCarLicensePlate(user.getCarLicensePlate());
+                dto.setBatteryCapacityKw(user.getBatteryCapacityKw());
+                return dto;
+            }).collect(Collectors.toList());
+            
+            return ResponseEntity.ok(userDtos);
+        } catch (Exception e) {
+            // Gestione degli errori durante il recupero degli utenti
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to get users: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Crea un nuovo posto auto.
+     * 
+     * @param spotDto I dettagli del posto auto
+     * @return Response con il posto auto creato
+     */
+    @PostMapping("/spots")
+    public ResponseEntity<?> createParkingSpot(@Valid @RequestBody ParkingSpotDto spotDto) {
+        try {
+            // Crea un nuovo posto auto con i dettagli forniti
+            ParkingSpot newSpot = new ParkingSpot();
+            newSpot.setSpotNumber(spotDto.getSpotNumber());
+            newSpot.setChargingAvailable(spotDto.isChargingAvailable());
+            
+            // Salva il posto auto e restituisci la risposta
+            ParkingSpot createdSpot = parkingService.createParkingSpot(newSpot);
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertToParkingSpotDto(createdSpot));
+        } catch (BadRequestException e) {
+            // Gestione degli errori di richiesta non valida
+            return ResponseEntity
+                    .badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            // Gestione degli errori generali
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to create parking spot: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Aggiorna un posto auto esistente.
+     * 
+     * @param id Il ID del posto auto da aggiornare
+     * @param spotDto I nuovi dettagli del posto auto
+     * @return Response con il posto auto aggiornato
+     */
+    @PutMapping("/spots/{id}")
+    public ResponseEntity<?> updateParkingSpot(@PathVariable Long id, @Valid @RequestBody ParkingSpotDto spotDto) {
+        try {
+            // Recupera il posto auto esistente
+            ParkingSpot existingSpot = parkingService.getParkingSpotById(id);
+            
+            // Aggiorna i dettagli del posto auto
+            if (spotDto.getSpotNumber() != null) {
+                existingSpot.setSpotNumber(spotDto.getSpotNumber());
+            }
+            existingSpot.setChargingAvailable(spotDto.isChargingAvailable());
+            
+            // Salva il posto auto aggiornato e restituisci la risposta
+            ParkingSpot updatedSpot = parkingService.updateParkingSpot(id, existingSpot);
+            return ResponseEntity.ok(convertToParkingSpotDto(updatedSpot));
+        } catch (ResourceNotFoundException e) {
+            // Se il posto auto non viene trovato
+            return ResponseEntity.notFound().build();
+        } catch (BadRequestException e) {
+            // Gestione degli errori di richiesta non valida
+            return ResponseEntity
+                    .badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            // Gestione degli errori generali
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to update parking spot: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Elimina un posto auto.
+     * 
+     * @param id Il ID del posto auto da eliminare
+     * @return Response con il messaggio di successo
+     */
+    @DeleteMapping("/spots/{id}")
+    public ResponseEntity<?> deleteParkingSpot(@PathVariable Long id) {
+        try {
+            // Elimina il posto auto
+            parkingService.deleteParkingSpot(id);
+            return ResponseEntity.ok(Map.of("message", "Parking spot deleted successfully"));
+        } catch (ResourceNotFoundException e) {
+            // Se il posto auto non viene trovato
+            return ResponseEntity.notFound().build();
+        } catch (BadRequestException e) {
+            // Gestione degli errori di richiesta non valida
+            return ResponseEntity
+                    .badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            // Gestione degli errori generali
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to delete parking spot: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Crea un nuovo MWbot (robot di ricarica).
+     * 
+     * @param requestMap I dati del nuovo MWbot
+     * @return Response con il MWbot creato
+     */
+    @PostMapping("/mwbots")
+    public ResponseEntity<?> createMWbot(@RequestBody Map<String, Object> requestMap) {
+        try {
+            // Crea un nuovo MWbot con i dati forniti
+            MWbot mwbot = new MWbot();
+            mwbot.setBotId(requestMap.get("botId").toString());
+            mwbot.setBatteryLevel((Integer) requestMap.get("batteryLevel"));
+            mwbot.setStatus(MWbot.BotStatus.valueOf(requestMap.get("status").toString()));
+            mwbot.setMaintenanceRequired((Boolean) requestMap.get("maintenanceRequired"));
+            mwbot.setChargingRateKw((Double) requestMap.get("chargingRateKw"));
+            
+            // Salva il MWbot e restituisci la risposta
+            MWbot createdBot = mwbotService.createMWbot(mwbot);
+            Map<String, Object> response = new HashMap<>();
+            response.put("id", createdBot.getId());
+            response.put("botId", createdBot.getBotId());
+            response.put("batteryLevel", createdBot.getBatteryLevel());
+            response.put("status", createdBot.getStatus().toString());
+            response.put("chargingRateKw", createdBot.getChargingRateKw());
+            response.put("maintenanceRequired", createdBot.isMaintenanceRequired());
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (Exception e) {
+            // Gestione degli errori durante la creazione del MWbot
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to create MWbot: " + e.getMessage()));
+        }
+    }
+
+    // Convert methods for DTOs
+    private ParkingSpotDto convertToParkingSpotDto(ParkingSpot spot) {
+        ParkingSpotDto dto = new ParkingSpotDto();
+        dto.setId(spot.getId());
+        dto.setSpotNumber(spot.getSpotNumber());
+        dto.setOccupied(spot.isOccupied());
+        dto.setReserved(spot.isReserved());
+        dto.setChargingAvailable(spot.isChargingAvailable());
+        return dto;
+    }
+
+    private MWbotDto convertToMWbotDto(MWbot bot) {
+        MWbotDto dto = new MWbotDto();
+        dto.setId(bot.getId());
+        dto.setBotId(bot.getBotId());
+        dto.setStatus(bot.getStatus().toString());
+        dto.setBatteryLevel(bot.getBatteryLevel());
+        dto.setChargingRateKw(bot.getChargingRateKw());
+        dto.setMaintenanceRequired(bot.isMaintenanceRequired());
+        return dto;
+    }
+}

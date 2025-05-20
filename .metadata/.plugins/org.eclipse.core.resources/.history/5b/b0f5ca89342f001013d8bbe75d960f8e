@@ -1,0 +1,183 @@
+package com.parkingsystem.mqtt;
+
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.MqttCallback;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+
+@Component
+@ConditionalOnProperty(name = "mqtt.enabled", havingValue = "true")
+public class MqttPublisher implements MqttPublisherInterface, MqttCallback {
+
+    private static final Logger logger = LoggerFactory.getLogger(MqttPublisher.class);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    
+    @Value("${mqtt.broker.url}")
+    private String brokerUrl;
+
+    @Value("${mqtt.client.id}")
+    private String clientId;
+    
+    @Value("${mqtt.reconnect.delay:5000}")
+    private long reconnectDelay;
+    
+    @Value("${mqtt.max.reconnect.attempts:12}")
+    private int maxReconnectAttempts;
+    
+    private int reconnectAttempts = 0;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    private MqttClient mqttClient;
+    private boolean isConnected = false;
+
+    @PostConstruct
+    public void init() {
+        connect();
+    }
+    
+    @PreDestroy
+    public void cleanup() {
+        disconnect();
+        scheduler.shutdownNow();
+    }
+
+    @Override
+    public void connect() {
+        try {
+            MqttConnectOptions options = new MqttConnectOptions();
+            options.setCleanSession(true);
+            options.setAutomaticReconnect(true);
+            options.setConnectionTimeout(10);
+            options.setKeepAliveInterval(60);
+            
+            mqttClient = new MqttClient(brokerUrl, clientId + "_pub", new MemoryPersistence());
+            mqttClient.setCallback(this);
+            mqttClient.connect(options);
+            
+            isConnected = true;
+            reconnectAttempts = 0;
+            
+            logger.info("Connected to MQTT broker: {}", brokerUrl);
+        } catch (MqttException e) {
+            logger.error("Failed to connect to MQTT broker: {}", e.getMessage());
+            scheduleReconnect();
+        }
+    }
+
+    @Override
+    public void disconnect() {
+        if (mqttClient != null && mqttClient.isConnected()) {
+            try {
+                mqttClient.disconnect();
+                isConnected = false;
+                logger.info("Disconnected from MQTT broker");
+            } catch (MqttException e) {
+                logger.error("Error disconnecting from MQTT broker: {}", e.getMessage());
+            }
+        }
+    }
+    
+    private void scheduleReconnect() {
+        if (reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            
+            long delay = reconnectDelay * (long) Math.pow(2, reconnectAttempts - 1); // Exponential backoff
+            delay = Math.min(delay, 300000); // Max 5 minutes
+            
+            logger.info("Scheduling reconnection attempt {} in {} ms", reconnectAttempts, delay);
+            
+            scheduler.schedule(() -> {
+                logger.info("Attempting to reconnect to MQTT broker (attempt {}/{})", 
+                        reconnectAttempts, maxReconnectAttempts);
+                connect();
+            }, delay, TimeUnit.MILLISECONDS);
+        } else {
+            logger.error("Max reconnection attempts ({}) reached. Giving up reconnecting to MQTT broker.", 
+                    maxReconnectAttempts);
+        }
+    }
+
+    @Override
+    public void publish(String topic, String payload) {
+        if (!isConnected()) {
+            logger.warn("Cannot publish to topic {}: Not connected to MQTT broker", topic);
+            connect();
+            return;
+        }
+        
+        try {
+            MqttMessage message = new MqttMessage(payload.getBytes());
+            message.setQos(1);
+            message.setRetained(false);
+            mqttClient.publish(topic, message);
+            logger.debug("Published to topic {}: {}", topic, payload);
+        } catch (MqttException e) {
+            logger.error("Error publishing to topic {}: {}", topic, e.getMessage());
+            isConnected = false;
+            scheduleReconnect();
+        }
+    }
+
+    @Override
+    public void publish(String topic, Object payload) {
+        try {
+            String json = objectMapper.writeValueAsString(payload);
+            publish(topic, json);
+        } catch (JsonProcessingException e) {
+            logger.error("Error serializing payload: {}", e.getMessage());
+            
+            // Fallback to simple toString() if JSON serialization fails
+            publish(topic, payload.toString());
+        }
+    }
+
+    @Override
+    public void publish(String topic, Map<String, Object> payload) {
+        publish(topic, (Object) payload);
+    }
+
+    @Override
+    public boolean isConnected() {
+        return isConnected && mqttClient != null && mqttClient.isConnected();
+    }
+
+    // MqttCallback methods
+    @Override
+    public void connectionLost(Throwable cause) {
+        logger.warn("Connection to MQTT broker lost: {}", cause.getMessage());
+        isConnected = false;
+        scheduleReconnect();
+    }
+
+    @Override
+    public void messageArrived(String topic, MqttMessage message) {
+        // Not used in publisher, but required by MqttCallback interface
+    }
+
+    @Override
+    public void deliveryComplete(IMqttDeliveryToken token) {
+        // Optional: handle delivery completion confirmation
+    }
+}

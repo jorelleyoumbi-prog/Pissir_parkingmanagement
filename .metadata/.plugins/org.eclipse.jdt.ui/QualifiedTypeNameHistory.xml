@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<qualifiedTypeNameHistroy>
+    <fullyQualifiedTypeName name="model.User"/>
+    <fullyQualifiedTypeName name="exception.BadRequestException"/>
+    <fullyQualifiedTypeName name="jakarta.validation.constraints.Email"/>
+    <fullyQualifiedTypeName name="jakarta.validation.constraints.NotBlank"/>
+    <fullyQualifiedTypeName name="jakarta.persistence.Table"/>
+    <fullyQualifiedTypeName name="jakarta.persistence.EnumType"/>
+    <fullyQualifiedTypeName name="jakarta.persistence.CascadeType"/>
+    <fullyQualifiedTypeName name="jakarta.persistence.Id"/>
+    <fullyQualifiedTypeName name="jakarta.websocket.MessageHandler"/>
+    <fullyQualifiedTypeName name="com.parkingsystem.model.ParkingSpot"/>
+    <fullyQualifiedTypeName name="com.parkingsystem.backend.service.UserService"/>
+    <fullyQualifiedTypeName name="com.parkingsystem.model.MWbot"/>
+    <fullyQualifiedTypeName name="com.parkingsystem.service.ChargingService"/>
+    <fullyQualifiedTypeName name="com.parkingsystem.service.MWbotService"/>
+    <fullyQualifiedTypeName name="com.parkingsystem.backend.model.ChargingRequest"/>
+</qualifiedTypeNameHistroy>

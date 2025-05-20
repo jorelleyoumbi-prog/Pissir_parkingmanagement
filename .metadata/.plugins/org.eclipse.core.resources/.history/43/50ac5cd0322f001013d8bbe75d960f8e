@@ -1,0 +1,5 @@
+package com.parkingsystem.mqtt;
+
+public class MqttOutboundGateway {
+
+}

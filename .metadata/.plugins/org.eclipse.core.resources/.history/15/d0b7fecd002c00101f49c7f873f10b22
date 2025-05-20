@@ -1,0 +1,174 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.security.SecurityProperties.User;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.model.ChargingRequest;
+import com.parkingsystem.model.MWbot;
+import com.parkingsystem.model.Reservation;
+import com.parkingsystem.mqtt.MqttPublisherInterface;
+
+/**
+ * Service for sending notifications
+ */
+@Service
+public class NotificationService {
+
+    @Autowired
+    private MqttPublisherInterface mqttPublisher;
+    
+    /**
+     * Send charging completion notification
+     * @param chargingRequest The charging request
+     */
+    public void sendChargingCompletionNotification(ChargingRequest chargingRequest) {
+        try {
+            User user = chargingRequest.getUser();
+            
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "CHARGING_COMPLETED");
+            payload.put("userId", user.getId());
+            payload.put("requestId", chargingRequest.getId());
+            payload.put("message", "Your charging request has been completed! Your vehicle is now charged to " + 
+                    chargingRequest.getTargetPercentage() + "%.");
+            payload.put("timestamp", LocalDateTime.now().toString());
+            
+            mqttPublisher.publish("notification/user/" + user.getId(), payload);
+        } catch (Exception e) {
+            // Log exception but don't stop the operation
+            System.err.println("Error sending charging completion notification: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Send charging delay notification
+     * @param chargingRequest The charging request
+     */
+    public void sendChargingDelayNotification(ChargingRequest chargingRequest) {
+        try {
+            User user = chargingRequest.getUser();
+            
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "CHARGING_DELAYED");
+            payload.put("userId", user.getId());
+            payload.put("requestId", chargingRequest.getId());
+            payload.put("message", "Your charging is taking longer than expected. Current battery level: " + 
+                    chargingRequest.getCurrentPercentage() + "%.");
+            payload.put("timestamp", LocalDateTime.now().toString());
+            
+            mqttPublisher.publish("notification/user/" + user.getId(), payload);
+        } catch (Exception e) {
+            // Log exception but don't stop the operation
+            System.err.println("Error sending charging delay notification: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Send reservation confirmation notification
+     * @param reservation The reservation
+     */
+    public void sendReservationConfirmationNotification(Reservation reservation) {
+        try {
+            User user = reservation.getUser();
+            
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "RESERVATION_CONFIRMED");
+            payload.put("userId", user.getId());
+            payload.put("reservationId", reservation.getId());
+            payload.put("message", "Your reservation for spot " + 
+                    reservation.getParkingSpot().getSpotNumber() + " has been confirmed!");
+            payload.put("timestamp", LocalDateTime.now().toString());
+            
+            mqttPublisher.publish("notification/user/" + user.getId(), payload);
+        } catch (Exception e) {
+            // Log exception but don't stop the operation
+            System.err.println("Error sending reservation confirmation notification: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Send mwbot maintenance notification
+     * @param mwbot The MWbot
+     */
+    public void sendMWbotMaintenanceNotification(MWbot mwbot) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "MWBOT_MAINTENANCE");
+            payload.put("botId", mwbot.getBotId());
+            payload.put("message", "MWbot " + mwbot.getBotId() + " requires maintenance!");
+            payload.put("timestamp", LocalDateTime.now().toString());
+            
+            mqttPublisher.publish("notification/admin/mwbot", payload);
+        } catch (Exception e) {
+            // Log exception but don't stop the operation
+            System.err.println("Error sending MWbot maintenance notification: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Send mwbot low battery notification
+     * @param mwbot The MWbot
+     */
+    public void sendMWbotLowBatteryNotification(MWbot mwbot) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "MWBOT_LOW_BATTERY");
+            payload.put("botId", mwbot.getBotId());
+            payload.put("batteryLevel", mwbot.getBatteryLevel());
+            payload.put("message", "MWbot " + mwbot.getBotId() + " has low battery: " + mwbot.getBatteryLevel() + "%");
+            payload.put("timestamp", LocalDateTime.now().toString());
+            
+            mqttPublisher.publish("notification/admin/mwbot", payload);
+        } catch (Exception e) {
+            // Log exception but don't stop the operation
+            System.err.println("Error sending MWbot low battery notification: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Send parking spot status notification
+     * @param spotId The spot ID
+     * @param status The spot status
+     */
+    public void sendParkingSpotStatusNotification(Long spotId, String status) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "SPOT_STATUS_CHANGE");
+            payload.put("spotId", spotId);
+            payload.put("status", status);
+            payload.put("timestamp", LocalDateTime.now().toString());
+            
+            mqttPublisher.publish("notification/parking/status", payload);
+        } catch (Exception e) {
+            // Log exception but don't stop the operation
+            System.err.println("Error sending parking spot status notification: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Send a custom notification to a user
+     * @param userId The user ID
+     * @param message The notification message
+     * @param level The notification level (INFO, WARNING, ERROR)
+     */
+    public void sendUserNotification(Long userId, String message, String level) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "ADMIN_NOTIFICATION");
+            payload.put("userId", userId);
+            payload.put("message", message);
+            payload.put("level", level);
+            payload.put("timestamp", LocalDateTime.now().toString());
+            
+            mqttPublisher.publish("notification/user/" + userId, payload);
+        } catch (Exception e) {
+            // Log exception but don't stop the operation
+            System.err.println("Error sending user notification: " + e.getMessage());
+        }
+    }
+}

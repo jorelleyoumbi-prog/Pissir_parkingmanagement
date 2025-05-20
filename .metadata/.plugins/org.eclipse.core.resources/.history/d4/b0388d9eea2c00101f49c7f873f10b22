@@ -1,0 +1,87 @@
+package com.parkingsystem.mqtt;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.integration.mqtt.support.MqttHeaders;
+import org.springframework.integration.support.MessageBuilder;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+/**
+ * Component for publishing messages to MQTT topics
+ */
+@Component
+@ConditionalOnProperty(name = "mqtt.enabled", havingValue = "true")
+public class MqttPublisher implements MqttPublisherInterface {
+
+    @Autowired
+    @Qualifier("mqttOutboundChannel")
+    private MessageChannel mqttOutboundChannel;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Override
+    public void publish(String topic, String payload) {
+        Message<String> message = MessageBuilder
+                .withPayload(payload)
+                .setHeader(MqttHeaders.TOPIC, topic)
+                .setHeader(MqttHeaders.QOS, 1)
+                .build();
+
+        mqttOutboundChannel.send(message);
+    }
+
+    @Override
+    public void publish(String topic, Object payload) {
+        try {
+            String json = objectMapper.writeValueAsString(payload);
+            publish(topic, json);
+        } catch (JsonProcessingException e) {
+            System.err.println("Error serializing MQTT payload: " + e.getMessage());
+            Map<String, String> errorPayload = Map.of(
+                    "error", "Failed to serialize payload",
+                    "message", payload.toString()
+            );
+            try {
+                String json = objectMapper.writeValueAsString(errorPayload);
+                publish(topic, json);
+            } catch (JsonProcessingException ex) {
+                publish(topic, "Error publishing message: " + ex.getMessage());
+            }
+        }
+    }
+
+    @Override
+    public void publish(String topic, Map<String, Object> payload) {
+        try {
+            String json = objectMapper.writeValueAsString(payload);
+            publish(topic, json);
+        } catch (JsonProcessingException e) {
+            publish(topic, "{\"error\": \"Serialization failed\"}");
+        }
+    }
+
+    @Override
+    public void connect() {
+        // Stub, implement if needed
+    }
+
+    @Override
+    public void disconnect() {
+        // Stub, implement if needed
+    }
+
+    @Override
+    public boolean isConnected() {
+        // Stub, implement if needed
+        return true;
+    }
+}

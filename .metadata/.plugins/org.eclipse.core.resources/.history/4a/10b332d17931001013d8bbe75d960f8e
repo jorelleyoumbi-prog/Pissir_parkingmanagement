@@ -1,0 +1,83 @@
+package com.parkingsystem.config;
+
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.integration.annotation.ServiceActivator;
+import org.springframework.integration.channel.DirectChannel;
+import org.springframework.integration.core.MessagingTemplate;
+import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
+import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
+import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannelAdapter;
+import org.springframework.integration.mqtt.outbound.MqttPahoMessageHandler;
+import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageHandler;
+
+import com.parkingsystem.service.ChargingSimulationService;
+
+@Configuration
+@ConditionalOnProperty(name = "mqtt.enabled", havingValue = "true")
+public class MqttConfig {
+
+    private final String brokerUrl;
+    private final String clientId;
+    private final String topicRequest;
+
+    public MqttConfig(
+        @Value("${mqtt.broker-url}") String brokerUrl,
+        @Value("${mqtt.client-id}") String clientId,
+        @Value("${mqtt.topics.request}") String topicRequest
+    ) {
+        this.brokerUrl    = brokerUrl;
+        this.clientId     = clientId;
+        this.topicRequest = topicRequest;
+    }
+
+    @Bean
+    public MqttPahoClientFactory mqttClientFactory() {
+        var opts = new MqttConnectOptions();
+        opts.setServerURIs(new String[]{ brokerUrl });
+        opts.setCleanSession(true);
+        var factory = new DefaultMqttPahoClientFactory();
+        factory.setConnectionOptions(opts);
+        return factory;
+    }
+
+    @Bean MessageChannel mqttOutboundChannel() { return new DirectChannel(); }
+
+    @Bean MessageChannel mqttRequestInputChannel() { return new DirectChannel(); }
+
+    @Bean
+    @ServiceActivator(inputChannel = "mqttOutboundChannel")
+    public MessageHandler mqttOutboundHandler(MqttPahoClientFactory factory) {
+        var h = new MqttPahoMessageHandler(clientId + "_out", factory);
+        h.setAsync(true);
+        h.setConverter(new DefaultPahoMessageConverter());
+        return h;
+    }
+
+    @Bean
+    public MqttPahoMessageDrivenChannelAdapter mqttInboundAdapter(MqttPahoClientFactory factory) {
+        var adapter = new MqttPahoMessageDrivenChannelAdapter(
+            clientId + "_in", factory, topicRequest
+        );
+        adapter.setOutputChannel(mqttRequestInputChannel());
+        adapter.setConverter(new DefaultPahoMessageConverter());
+        adapter.setQos(1);
+        return adapter;
+    }
+
+    @Bean
+    @ServiceActivator(inputChannel = "mqttRequestInputChannel")
+    public MessageHandler requestMessageHandler(ChargingSimulationService simSvc) {
+        return msg -> simSvc.handleChargingRequest((String) msg.getPayload());
+    }
+
+    @Bean
+    public MessagingTemplate mqttTemplate(MessageChannel mqttOutboundChannel) {
+        return new MessagingTemplate(mqttOutboundChannel);
+    }
+}

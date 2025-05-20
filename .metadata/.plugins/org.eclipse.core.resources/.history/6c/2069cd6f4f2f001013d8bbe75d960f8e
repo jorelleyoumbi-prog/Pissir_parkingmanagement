@@ -1,0 +1,84 @@
+package com.parkingsystem.backend.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * Data Transfer Object for ParkingSpot entity
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ParkingSpotDto {
+    
+    private Long id;
+    
+    private String spotNumber;
+    
+    public Long getId() {
+		return id;
+	}
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public String getSpotNumber() {
+		return spotNumber;
+	}
+
+	public void setSpotNumber(String spotNumber) {
+		this.spotNumber = spotNumber;
+	}
+
+	public boolean isOccupied() {
+		return occupied;
+	}
+
+	public void setOccupied(boolean occupied) {
+		this.occupied = occupied;
+	}
+
+	public boolean isChargingAvailable() {
+		return chargingAvailable;
+	}
+
+	public void setChargingAvailable(boolean chargingAvailable) {
+		this.chargingAvailable = chargingAvailable;
+	}
+
+	public boolean isReserved() {
+		return reserved;
+	}
+
+	public void setReserved(boolean reserved) {
+		this.reserved = reserved;
+	}
+
+	public String getOccupiedSince() {
+		return occupiedSince;
+	}
+
+	public void setOccupiedSince(String occupiedSince) {
+		this.occupiedSince = occupiedSince;
+	}
+
+	public String getLastUpdated() {
+		return lastUpdated;
+	}
+
+	public void setLastUpdated(String lastUpdated) {
+		this.lastUpdated = lastUpdated;
+	}
+
+	private boolean occupied;
+    
+    private boolean chargingAvailable;
+    
+    private boolean reserved;
+    
+    private String occupiedSince;
+    
+    private String lastUpdated;
+}

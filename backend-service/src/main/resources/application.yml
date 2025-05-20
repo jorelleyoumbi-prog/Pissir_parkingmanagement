@@ -1,0 +1,23 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: backend-service
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/parkingdb}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: ${SHOW_SQL:true}
+    database-platform: org.hibernate.dialect.MySQL8Dialect
+
+mqtt:
+  enabled: true
+  broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+  client-id: ${MQTT_CLIENT_ID:backend-client}  # Rimuovi UUID per stabilità
+  topic:
+    prefix: ${MQTT_TOPIC_PREFIX:parkingsystem}

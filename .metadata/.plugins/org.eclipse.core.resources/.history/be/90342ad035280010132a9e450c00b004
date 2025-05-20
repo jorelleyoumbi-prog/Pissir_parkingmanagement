@@ -1,0 +1,478 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.model.ChargingRequest;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.model.Payment;
+import com.parkingsystem.backend.model.Reservation;
+import com.parkingsystem.backend.model.User;
+import com.parkingsystem.repository.ChargingRequestRepository;
+import com.parkingsystem.repository.PaymentRepository;
+import com.parkingsystem.repository.ReservationRepository;
+
+/**
+ * Service for payment operations
+ */
+@Service
+public class PaymentService {
+
+    @Autowired
+    private PaymentRepository paymentRepository;
+    
+    @Autowired
+    private ReservationRepository reservationRepository;
+    
+    @Autowired
+    private ChargingRequestRepository chargingRequestRepository;
+    
+    @Autowired
+    private UserService userService;
+    
+    @Value("${parking.hourly.rate:3.0}")
+    private double parkingHourlyRate;
+    
+    @Value("${charging.rate.per.kwh:0.35}")
+    private double chargingRatePerKwh;
+    
+    @Value("${payment.currency:EUR}")
+    private String currency;
+    
+    @Autowired
+    private ParkingService parkingService;
+    
+    /**
+     * Create a payment for a reservation
+     * @param userId The user ID
+     * @param reservationId The reservation ID
+     * @param paymentMethod The payment method
+     * @return The created payment
+     */
+    public Payment createPaymentForReservation(Long userId, Long reservationId, String paymentMethod) {
+        // Get user and reservation
+        User user = userService.findById(userId);
+        Reservation reservation = reservationRepository.findById(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found with id: " + reservationId));
+        
+        // Validate that the reservation belongs to the user
+        if (!reservation.getUser().getId().equals(userId)) {
+            throw new BadRequestException("Reservation does not belong to the user");
+        }
+        
+        // Calculate amount based on reservation duration
+        double hours = ChronoUnit.HOURS.between(reservation.getStartTime(), reservation.getEndTime());
+        if (hours < 1) {
+            hours = 1; // Minimum 1 hour
+        }
+        double amount = hours * parkingHourlyRate;
+        
+        // Create payment
+        Payment payment = new Payment();
+        payment.setUser(user);
+        payment.setReservation(reservation);
+        payment.setAmount(amount);
+        payment.setCurrency(currency);
+        payment.setPaymentMethod(paymentMethod);
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        payment.setType(Payment.PaymentType.RESERVATION);
+        payment.setPaymentDate(LocalDateTime.now());
+        
+        // If credit card, store last 4 digits
+        if (paymentMethod.equals("CREDIT_CARD") && user.getCreditCardNumber() != null) {
+            String cardNumber = user.getCreditCardNumber();
+            if (cardNumber.length() >= 4) {
+                payment.setCardLastFour(cardNumber.substring(cardNumber.length() - 4));
+            }
+        }
+        
+        // Generate transaction ID
+        payment.setTransactionId(generateTransactionId());
+        
+        return paymentRepository.save(payment);
+    }
+    
+ // Metodo per gestione ricarica aggiuntiva
+    public Payment createPaymentForAdditionalCharging(Long userId, Long chargingRequestId, double additionalAmount, String paymentMethod) {
+        User user = userService.findById(userId);
+        ChargingRequest chargingRequest = chargingRequestRepository.findById(chargingRequestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Charging request not found with id: " + chargingRequestId));
+        
+        // Validate that the charging request belongs to the user
+        if (!chargingRequest.getUser().getId().equals(userId)) {
+            throw new BadRequestException("Charging request does not belong to the user");
+        }
+
+        // Calcola il pagamento aggiuntivo
+        double amount = additionalAmount;
+        
+        // Crea il pagamento
+        Payment payment = new Payment();
+        payment.setUser(user);
+        payment.setChargingRequest(chargingRequest);
+        payment.setAmount(amount);
+        payment.setCurrency(currency);
+        payment.setPaymentMethod(paymentMethod);
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        payment.setType(Payment.PaymentType.ADDITIONAL_CHARGING);
+        payment.setPaymentDate(LocalDateTime.now());
+        
+        // Gestione carta di credito
+        if (paymentMethod.equals("CREDIT_CARD") && user.getCreditCardNumber() != null) {
+            String cardNumber = user.getCreditCardNumber();
+            if (cardNumber.length() >= 4) {
+                payment.setCardLastFour(cardNumber.substring(cardNumber.length() - 4));
+            }
+        }
+
+        // Genera ID transazione
+        payment.setTransactionId(generateTransactionId());
+        
+        return paymentRepository.save(payment);
+    }
+
+    
+    /**
+     * Create a payment for a charging request
+     * @param userId The user ID
+     * @param chargingRequestId The charging request ID
+     * @param paymentMethod The payment method
+     * @return The created payment
+     */
+    public Payment createPaymentForChargingRequest(Long userId, Long chargingRequestId, String paymentMethod) {
+        // Get user and charging request
+        User user = userService.findById(userId);
+        ChargingRequest chargingRequest = chargingRequestRepository.findById(chargingRequestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Charging request not found with id: " + chargingRequestId));
+        
+        // Validate that the charging request belongs to the user
+        if (!chargingRequest.getUser().getId().equals(userId)) {
+            throw new BadRequestException("Charging request does not belong to the user");
+        }
+        
+        // Validate that the charging request is completed
+        if (chargingRequest.getStatus() != ChargingRequest.ChargingStatus.COMPLETED) {
+            throw new BadRequestException("Charging request is not completed");
+        }
+        
+        // Calculate amount based on energy used
+        double amount = 0;
+        if (chargingRequest.getTotalEnergyKwh() != null) {
+            amount = chargingRequest.getTotalEnergyKwh() * chargingRatePerKwh;
+        } else {
+            // Fallback calculation if total energy is not available
+            double percentageCharged = chargingRequest.getTargetPercentage() - chargingRequest.getInitialPercentage();
+            if (user.getBatteryCapacityKw() != null) {
+                double kwhCharged = (percentageCharged / 100.0) * user.getBatteryCapacityKw();
+                amount = kwhCharged * chargingRatePerKwh;
+            } else {
+                // Default amount if we can't calculate
+                amount = 5.0;
+            }
+        }
+        
+        // Create payment
+        Payment payment = new Payment();
+        payment.setUser(user);
+        payment.setChargingRequest(chargingRequest);
+        payment.setAmount(amount);
+        payment.setCurrency(currency);
+        payment.setPaymentMethod(paymentMethod);
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        payment.setType(Payment.PaymentType.CHARGING);
+        payment.setPaymentDate(LocalDateTime.now());
+        payment.setTransactionId(generateTransactionId());
+        
+        // If credit card, store last 4 digits
+        if (paymentMethod.equals("CREDIT_CARD") && user.getCreditCardNumber() != null) {
+            String cardNumber = user.getCreditCardNumber();
+            if (cardNumber.length() >= 4) {
+                payment.setCardLastFour(cardNumber.substring(cardNumber.length() - 4));
+            }
+        }
+        
+        // Generate transaction ID
+        payment.setTransactionId(generateTransactionId());
+        
+        return paymentRepository.save(payment);
+    }
+    
+    /**
+     * Create a payment for cancellation fee
+     * @param userId The user ID
+     * @param reservationId The reservation ID
+     * @param amount The cancellation fee amount
+     * @param paymentMethod The payment method
+     * @return The created payment
+     */
+    public Payment createPaymentForCancellationFee(Long userId, Long reservationId, double amount, String paymentMethod) {
+        // Get user and reservation
+        User user = userService.findById(userId);
+        Reservation reservation = reservationRepository.findById(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found with id: " + reservationId));
+        
+        // Validate that the reservation belongs to the user
+        if (!reservation.getUser().getId().equals(userId)) {
+            throw new BadRequestException("Reservation does not belong to the user");
+        }
+        
+        // Create payment
+        Payment payment = new Payment();
+        payment.setUser(user);
+        payment.setReservation(reservation);
+        payment.setAmount(amount);
+        payment.setCurrency(currency);
+        payment.setPaymentMethod(paymentMethod);
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        payment.setType(Payment.PaymentType.CANCELLATION_FEE);
+        payment.setPaymentDate(LocalDateTime.now());
+        
+        // If credit card, store last 4 digits
+        if (paymentMethod.equals("CREDIT_CARD") && user.getCreditCardNumber() != null) {
+            String cardNumber = user.getCreditCardNumber();
+            if (cardNumber.length() >= 4) {
+                payment.setCardLastFour(cardNumber.substring(cardNumber.length() - 4));
+            }
+        }
+        
+        // Generate transaction ID
+        payment.setTransactionId(generateTransactionId());
+        
+        return paymentRepository.save(payment);
+    }
+    
+    /**
+     * Create a payment for late fee
+     * @param userId The user ID
+     * @param reservationId The reservation ID
+     * @param amount The late fee amount
+     * @param paymentMethod The payment method
+     * @return The created payment
+     */
+    public Payment createPaymentForLateFee(Long userId, Long reservationId, double amount, String paymentMethod) {
+        // Get user and reservation
+        User user = userService.findById(userId);
+        Reservation reservation = reservationRepository.findById(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found with id: " + reservationId));
+        
+        // Validate that the reservation belongs to the user
+        if (!reservation.getUser().getId().equals(userId)) {
+            throw new BadRequestException("Reservation does not belong to the user");
+        }
+        
+        // Create payment
+        Payment payment = new Payment();
+        payment.setUser(user);
+        payment.setReservation(reservation);
+        payment.setAmount(amount);
+        payment.setCurrency(currency);
+        payment.setPaymentMethod(paymentMethod);
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        payment.setType(Payment.PaymentType.LATE_FEE);
+        payment.setPaymentDate(LocalDateTime.now());
+        
+        // If credit card, store last 4 digits
+        if (paymentMethod.equals("CREDIT_CARD") && user.getCreditCardNumber() != null) {
+            String cardNumber = user.getCreditCardNumber();
+            if (cardNumber.length() >= 4) {
+                payment.setCardLastFour(cardNumber.substring(cardNumber.length() - 4));
+            }
+        }
+        
+        // Generate transaction ID
+        payment.setTransactionId(generateTransactionId());
+        
+        return paymentRepository.save(payment);
+    }
+    
+    /**
+     * Get a payment by ID
+     * @param id The payment ID
+     * @return The payment
+     */
+    public Payment getPaymentById(Long id) {
+        return paymentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found with id: " + id));
+    }
+    
+    /**
+     * Get payments by user ID
+     * @param userId The user ID
+     * @return List of payments
+     */
+    public List<Payment> getPaymentsByUserId(Long userId) {
+        return paymentRepository.findByUserId(userId);
+    }
+    
+    /**
+     * Get revenue for a specific time range
+     * @param startTime The start time
+     * @param endTime The end time
+     * @return Total revenue
+     */
+    public double getRevenueForTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
+        List<Payment> payments = paymentRepository.findByPaymentDateBetween(startTime, endTime);
+        return payments.stream().mapToDouble(Payment::getAmount).sum();
+    }
+    
+    /**
+     * Generate a transaction ID
+     * @return Transaction ID
+     */
+    private String generateTransactionId() {
+        return "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+    
+    public Payment createPaymentForParking(Long userId, Long parkingSpotId, String paymentMethod) {
+        User user = userService.findById(userId);
+        ParkingSpot parkingSpot = parkingService.getParkingSpotById(parkingSpotId);
+        
+        // Calcola la durata del parcheggio
+        LocalDateTime startTime = parkingSpot.getOccupiedSince();
+        LocalDateTime endTime = LocalDateTime.now();
+        
+        // Se non c'è un orario di inizio, utilizzare un valore predefinito di 1 ora
+        double hoursParked = 1.0;
+        if (startTime != null) {
+            long minutesParked = ChronoUnit.MINUTES.between(startTime, endTime);
+            hoursParked = Math.ceil(minutesParked / 60.0);
+            if (hoursParked < 1) hoursParked = 1.0; // Minimo 1 ora
+        }
+        
+        // Calcola l'importo da pagare
+        double amount = hoursParked * parkingHourlyRate;
+        
+        System.out.println("Parking start time: " + startTime);
+        System.out.println("Parking end time: " + endTime);
+        System.out.println("Hours parked: " + hoursParked);
+        System.out.println("Parking rate: " + parkingHourlyRate);
+        System.out.println("Amount to pay: " + amount);
+        
+        // Crea il pagamento
+        Payment payment = new Payment();
+        payment.setUser(user);
+        payment.setAmount(amount);
+        payment.setCurrency(currency);
+        payment.setPaymentMethod(paymentMethod);
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        payment.setType(Payment.PaymentType.PARKING_ONLY);
+        payment.setPaymentDate(LocalDateTime.now());
+        payment.setTransactionId(generateTransactionId());
+        
+        // Gestione carta di credito se necessario
+        if (paymentMethod.equals("CREDIT_CARD") && user.getCreditCardNumber() != null) {
+            String cardNumber = user.getCreditCardNumber();
+            if (cardNumber.length() >= 4) {
+                payment.setCardLastFour(cardNumber.substring(cardNumber.length() - 4));
+            }
+        }
+        
+        // Genera ID transazione
+        payment.setTransactionId(generateTransactionId());
+        
+        return paymentRepository.save(payment);
+    }
+    
+    /**
+     * Create a payment that includes both parking and charging (if any)
+     * @param userId The user ID
+     * @param parkingSpotId The parking spot ID
+     * @param paymentMethod The payment method
+     * @return The created payment
+     */
+    public Payment createPaymentForParkingAndCharging(Long userId, Long parkingSpotId, String paymentMethod) {
+        User user = userService.findById(userId);
+        ParkingSpot parkingSpot = parkingService.getParkingSpotById(parkingSpotId);
+        
+        // Calcola costo del parcheggio
+        LocalDateTime startTime = parkingSpot.getOccupiedSince();
+        LocalDateTime endTime = LocalDateTime.now();
+        
+        double hoursParked = 1.0;
+        if (startTime != null) {
+            long minutesParked = ChronoUnit.MINUTES.between(startTime, endTime);
+            hoursParked = Math.ceil(minutesParked / 60.0);
+            if (hoursParked < 1) hoursParked = 1.0; // Minimo 1 ora
+        }
+        
+        double parkingAmount = hoursParked * parkingHourlyRate;
+        
+        // Trova eventuali richieste di ricarica completate per questo utente e posto
+        List<ChargingRequest> completedRequests = chargingRequestRepository.findByUserIdAndParkingSpotIdAndStatus(
+                userId, parkingSpotId, ChargingRequest.ChargingStatus.COMPLETED);
+        
+        double chargingAmount = 0.0;
+        ChargingRequest lastCompletedRequest = null;
+        
+        for (ChargingRequest request : completedRequests) {
+            lastCompletedRequest = request; // Salva l'ultima richiesta completata
+            
+            if (request.getTotalEnergyKwh() != null) {
+                chargingAmount += request.getTotalEnergyKwh() * chargingRatePerKwh;
+            } else {
+                // Calcolo fallback se totalEnergyKwh non è disponibile
+                double percentageCharged = request.getTargetPercentage() - request.getInitialPercentage();
+                if (user.getBatteryCapacityKw() != null) {
+                    double kwhCharged = (percentageCharged / 100.0) * user.getBatteryCapacityKw();
+                    chargingAmount += kwhCharged * chargingRatePerKwh;
+                }
+            }
+        }
+        
+        // Calcola importo totale
+        double totalAmount = parkingAmount + chargingAmount;
+        
+        // Crea il pagamento
+        Payment payment = new Payment();
+        payment.setUser(user);
+        payment.setAmount(totalAmount);
+        payment.setCurrency(currency);
+        payment.setPaymentMethod(paymentMethod);
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        
+        // Se ci sono richieste di ricarica, associa l'ultima al pagamento e imposta il tipo appropriato
+        if (lastCompletedRequest != null) {
+            payment.setChargingRequest(lastCompletedRequest);
+            payment.setType(Payment.PaymentType.PARKING_AND_CHARGING);
+        } else {
+            payment.setType(Payment.PaymentType.PARKING_ONLY);
+        }
+        
+        payment.setPaymentDate(LocalDateTime.now());
+        
+        // Gestione carta di credito
+        if (paymentMethod.equals("CREDIT_CARD") && user.getCreditCardNumber() != null) {
+            String cardNumber = user.getCreditCardNumber();
+            if (cardNumber.length() >= 4) {
+                payment.setCardLastFour(cardNumber.substring(cardNumber.length() - 4));
+            }
+        }
+        
+        // Genera ID transazione
+        payment.setTransactionId(generateTransactionId());
+        
+        // Log dettagliati
+        System.out.println("Parking start time: " + startTime);
+        System.out.println("Parking end time: " + endTime);
+        System.out.println("Hours parked: " + hoursParked);
+        System.out.println("Parking rate: " + parkingHourlyRate);
+        System.out.println("Parking amount: " + parkingAmount);
+        System.out.println("Charging requests found: " + completedRequests.size());
+        System.out.println("Charging amount: " + chargingAmount);
+        System.out.println("Total amount to pay: " + totalAmount);
+        
+        return paymentRepository.save(payment);
+    }
+
+    
+    
+    
+}

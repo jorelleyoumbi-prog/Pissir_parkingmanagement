@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<section name="Workbench">
+	<item key="hasShownOverlayPopupBefore" value="true"/>
+	<section name="java.lang.Class">
+		<item key="replaceBarOpen" value="false"/>
+		<list key="findhistory">
+			<item value="status"/>
+			<item value="handle"/>
+			<item value="imq"/>
+			<item value="payment"/>
+			<item value="paym"/>
+			<item value="occu"/>
+			<item value="update"/>
+			<item value="mysql"/>
+			<item value="securi"/>
+			<item value="faster"/>
+			<item value="framework.in"/>
+			<item value="jupi"/>
+			<item value="test"/>
+			<item value="paho"/>
+			<item value="springdo"/>
+		</list>
+	</section>
+</section>

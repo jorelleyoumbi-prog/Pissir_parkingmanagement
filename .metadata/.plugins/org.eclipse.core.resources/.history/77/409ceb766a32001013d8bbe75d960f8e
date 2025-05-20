@@ -1,0 +1,126 @@
+package com.parkingsystem.config;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+import org.eclipse.paho.client.mqttv3.IMqttClient;
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.MessageHandler;
+import org.springframework.retry.annotation.EnableRetry;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+@Configuration
+@EnableRetry
+public class MqttConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(MqttConfig.class);
+
+    @Value("${mqtt.broker-url:tcp://localhost:1883}")
+    private String brokerUrl;
+
+    @Value("${mqtt.client-id:iot-service-}")
+    private String clientIdPrefix;
+    
+    @Value("${mqtt.reconnect.delay:5000}")
+    private long reconnectDelay;
+    
+    @Value("${mqtt.max.reconnect.attempts:12}")
+    private int maxReconnectAttempts;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Bean
+    public IMqttClient mqttClient() throws MqttException {
+        String clientId = clientIdPrefix + UUID.randomUUID().toString();
+        logger.info("Creating MQTT client with ID: {}", clientId);
+        
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setAutomaticReconnect(true);
+        options.setCleanSession(true);
+        options.setConnectionTimeout(30);
+        options.setKeepAliveInterval(60);
+        
+        IMqttClient mqttClient = new MqttClient(brokerUrl, clientId, new MemoryPersistence());
+        
+        // Gestione resiliente delle connessioni
+        mqttClient.setCallback(new MqttCallbackExtended() {
+            @Override
+            public void connectComplete(boolean reconnect, String serverURI) {
+                logger.info("Connected to MQTT broker: {}, reconnect: {}", serverURI, reconnect);
+                if (reconnect) {
+                    // Al riconnettersi, sottoscrivere nuovamente ai topic
+                    try {
+                        subscribeToTopics(mqttClient);
+                    } catch (MqttException e) {
+                        logger.error("Failed to resubscribe to topics after reconnection", e);
+                    }
+                }
+            }
+
+            @Override
+            public void connectionLost(Throwable cause) {
+                logger.warn("Connection to MQTT broker lost: {}", cause.getMessage());
+            }
+
+            @Override
+            public void messageArrived(String topic, MqttMessage message) {
+                // Handled by inbound adapter
+            }
+
+            @Override
+            public void deliveryComplete(IMqttDeliveryToken token) {
+                // Non necessario
+            }
+        });
+        
+        try {
+            mqttClient.connect(options);
+            logger.info("Connected to MQTT broker: {}", brokerUrl);
+            subscribeToTopics(mqttClient);
+        } catch (MqttException e) {
+            logger.warn("Could not connect to MQTT broker: {}. Will retry automatically. Error: {}", 
+                      brokerUrl, e.getMessage());
+        }
+        
+        return mqttClient;
+    }
+    
+    private void subscribeToTopics(IMqttClient mqttClient) throws MqttException {
+        // Sottoscrizione ai topic principali
+        String[] topics = {
+            "parkingsystem/parking/entrance",
+            "parkingsystem/parking/exit", 
+            "parkingsystem/parking/spots/+/status",
+            "parkingsystem/mwbot/+/status", 
+            "parkingsystem/mwbot/+/command",
+            "parkingsystem/charging/+/progress",
+            "parkingsystem/charging/+/completed"
+        };
+        
+        int[] qos = new int[topics.length];
+        for (int i = 0; i < qos.length; i++) {
+            qos[i] = 1; // QoS 1 per tutti i topic
+        }
+        
+        mqttClient.subscribe(topics, qos);
+        logger.info("Subscribed to {} topics", topics.length);
+    }
+    
+    @Bean
+    public Map<String, MessageHandler> topicHandlers() {
+        return new HashMap<>();
+    }
+}

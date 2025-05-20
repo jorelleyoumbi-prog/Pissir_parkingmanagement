@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Smart Parking System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" th:href="@{/css/admin.css}">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-dark sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active text-white" th:href="@{/admin/dashboard}">
+                                <i class="bi bi-speedometer2 me-2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white" th:href="@{/admin/spots}">
+                                <i class="bi bi-p-square me-2"></i> Posti Auto
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white" th:href="@{/admin/mwbots}">
+                                <i class="bi bi-robot me-2"></i> Gestione MWbot
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white" th:href="@{/admin/reports}">
+                                <i class="bi bi-bar-chart me-2"></i> Report
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white" th:href="@{/admin/settings}">
+                                <i class="bi bi-gear me-2"></i> Impostazioni
+                            </a>
+                        </li>
+                        <li class="nav-item mt-4">
+                            <a class="nav-link text-white" th:href="@{/dashboard}">
+                                <i class="bi bi-arrow-left me-2"></i> Torna alla Dashboard
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">Dashboard Amministrativa</h1>
+                    <div class="btn-toolbar mb-2 mb-md-0">
+                        <div class="btn-group me-2">
+                            <a href="#" class="btn btn-sm btn-outline-secondary">Esporta</a>
+                            <a href="#" class="btn btn-sm btn-outline-secondary">Report</a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-success" th:if="${success}" th:text="${success}"></div>
+                <div class="alert alert-danger" th:if="${error}" th:text="${error}"></div>
+
+                <!-- Dashboard Overview -->
+                <div class="row" th:if="${dashboardData != null}">
+                    <div class="col-md-3 mb-4">
+                        <div class="card bg-primary text-white h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="me-3">
+                                        <div class="text-white-75 small">Utenti Totali</div>
+                                        <div class="text-lg fw-bold" th:text="${dashboardData.users.totalUsers}">0</div>
+                                    </div>
+                                    <i class="bi bi-people-fill text-white-50" style="font-size: 2rem;"></i>
+                                </div>
+                            </div>
+                            <div class="card-footer d-flex align-items-center justify-content-between small">
+                                <span th:text="${dashboardData.users.premiumUsers} + ' utenti premium'"></span>
+                                <div class="text-white"><i class="bi bi-chevron-right"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-4">
+                        <div class="card bg-success text-white h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="me-3">
+                                        <div class="text-white-75 small">Posti Totali</div>
+                                        <div class="text-lg fw-bold" th:text="${dashboardData.parking.totalSpots}">0</div>
+                                    </div>
+                                    <i class="bi bi-p-square-fill text-white-50" style="font-size: 2rem;"></i>
+                                </div>
+                            </div>
+                            <div class="card-footer d-flex align-items-center justify-content-between small">
+                                <span th:text="${dashboardData.parking.occupancyRate} + '% occupazione'"></span>
+                                <div class="text-white"><i class="bi bi-chevron-right"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-4">
+                        <div class="card bg-warning text-white h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="me-3">
+                                        <div class="text-white-75 small">MWbot Totali</div>
+                                        <div class="text-lg fw-bold" th:text="${dashboardData.mwbots.totalMwbots}">0</div>
+                                    </div>
+                                    <i class="bi bi-robot text-white-50" style="font-size: 2rem;"></i>
+                                </div>
+                            </div>
+                            <div class="card-footer d-flex align-items-center justify-content-between small">
+                                <span th:text="${dashboardData.mwbots.availableMwbots} + ' disponibili'"></span>
+                                <div class="text-white"><i class="bi bi-chevron-right"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-4">
+                        <div class="card bg-info text-white h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="me-3">
+                                        <div class="text-white-75 small">Incasso Oggi</div>
+                                        <div class="text-lg fw-bold">
+                                            <span th:text="${#numbers.formatDecimal(dashboardData.todayRevenue, 1, 2)}">0</span>
+                                            <span th:text="${dashboardData.currency}">EUR</span>
+                                        </div>
+                                    </div>
+                                    <i class="bi bi-currency-euro text-white-50" style="font-size: 2rem;"></i>
+                                </div>
+                            </div>
+                            <div class="card-footer d-flex align-items-center justify-content-between small">
+                                <span>Visualizza report</span>
+                                <div class="text-white"><i class="bi bi-chevron-right"></i></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parking Spots Overview -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Stato Parcheggio</h5>
+                                <a th:href="@{/admin/spots}" class="btn btn-sm btn-outline-primary">Gestisci</a>
+                            </div>
+                            <div class="card-body">
+                                <div th:if="${dashboardData != null}" class="mb-3">
+                                    <div class="progress" style="height: 25px;">
+                                        <div class="progress-bar bg-success" 
+                                             th:style="'width: ' + ${100 - dashboardData.parking.occupancyRate} + '%'" 
+                                             th:text="${dashboardData.parking.totalSpots - dashboardData.parking.occupiedSpots} + ' liberi'">
+                                        </div>
+                                        <div class="progress-bar bg-danger" 
+                                             th:style="'width: ' + ${dashboardData.parking.occupancyRate} + '%'" 
+                                             th:text="${dashboardData.parking.occupiedSpots} + ' occupati'">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="table-responsive" th:if="${parkingSpots != null && #arrays.length(parkingSpots) > 0}">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Posto</th>
+                                                <th>Stato</th>
+                                                <th>Ricarica</th>
+                                                <th>Posizione</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr th:each="spot : ${parkingSpots}" th:if="${spotStat.index < 5}">
+                                                <td th:text="${spot.spotNumber}"></td>
+                                                <td>
+                                                    <span th:if="${spot.occupied}" class="badge bg-danger">Occupato</span>
+                                                    <span th:if="${!spot.occupied && spot.reserved}" class="badge bg-warning">Riservato</span>
+                                                    <span th:if="${!spot.occupied && !spot.reserved}" class="badge bg-success">Libero</span>
+                                                </td>
+                                                <td>
+                                                    <span th:if="${spot.chargingAvailable}" class="badge bg-info">Disponibile</span>
+                                                    <span th:if="${!spot.chargingAvailable}" class="badge bg-secondary">Non disponibile</span>
+                                                </td>
+                                                <td th:text="${spot.location}"></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Stato MWbot</h5>
+                                <a th:href="@{/admin/mwbots}" class="btn btn-sm btn-outline-primary">Gestisci</a>
+                            </div>
+                            <div class="card-body">
+                                <div th:if="${dashboardData != null}" class="mb-3 row text-center">
+                                    <div class="col">
+                                        <div class="p-3 border bg-light">
+                                            <h3 th:text="${dashboardData.mwbots.availableMwbots}">0</h3>
+                                            <small>Disponibili</small>
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <div class="p-3 border bg-light">
+                                            <h3 th:text="${dashboardData.mwbots.busyMwbots}">0</h3>
+                                            <small>In uso</small>
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <div class="p-3 border bg-light">
+                                            <h3 th:text="${dashboardData.mwbots.maintenanceMwbots}">0</h3>
+                                            <small>In manutenzione</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="table-responsive" th:if="${mwbots != null && #arrays.length(mwbots) > 0}">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>Stato</th>
+                                                <th>Batteria</th>
+                                                <th>Manutenzione</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr th:each="bot : ${mwbots}" th:if="${botStat.index < 5}">
+                                                <td th:text="${bot.botId}"></td>
+                                                <td>
+                                                    <span th:if="${bot.status == 'AVAILABLE'}" class="badge bg-success">Disponibile</span>
+                                                    <span th:if="${bot.status == 'BUSY'}" class="badge bg-warning">In uso</span>
+                                                    <span th:if="${bot.status == 'MAINTENANCE'}" class="badge bg-danger">Manutenzione</span>
+                                                </td>
+                                                <td>
+                                                    <div class="progress" style="height: 15px;">
+                                                        <div th:class="${bot.batteryLevel > 30 ? 'progress-bar bg-success' : 'progress-bar bg-danger'}" 
+                                                             th:style="'width: ' + ${bot.batteryLevel} + '%'" 
+                                                             th:text="${bot.batteryLevel} + '%'">
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span th:if="${bot.maintenanceRequired}" class="badge bg-danger">Richiesta</span>
+                                                    <span th:if="${!bot.maintenanceRequired}" class="badge bg-success">OK</span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions -->
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Azioni Rapide</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <a th:href="@{/admin/spots}" class="btn btn-outline-primary btn-lg w-100">
+                                            <i class="bi bi-plus-circle mb-2" style="font-size: 2rem;"></i>
+                                            <br>Aggiungi Posto Auto
+                                        </a>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <a th:href="@{/admin/mwbots}" class="btn btn-outline-primary btn-lg w-100">
+                                            <i class="bi bi-plus-circle mb-2" style="font-size: 2rem;"></i>
+                                            <br>Aggiungi MWbot
+                                        </a>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <a th:href="@{/admin/reports}" class="btn btn-outline-primary btn-lg w-100">
+                                            <i class="bi bi-bar-chart mb-2" style="font-size: 2rem;"></i>
+                                            <br>Visualizza Report
+                                        </a>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <a th:href="@{/admin/settings}" class="btn btn-outline-primary btn-lg w-100">
+                                            <i class="bi bi-gear mb-2" style="font-size: 2rem;"></i>
+                                            <br>Impostazioni
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</body>
+</html>

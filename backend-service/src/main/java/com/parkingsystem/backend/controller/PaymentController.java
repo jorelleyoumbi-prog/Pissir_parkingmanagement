@@ -1,0 +1,288 @@
+package com.parkingsystem.backend.controller;
+
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.parkingsystem.backend.dto.PaymentDto;
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.exception.UnauthorizedException;
+import com.parkingsystem.backend.model.Payment;
+import com.parkingsystem.backend.model.User;
+import com.parkingsystem.backend.service.PaymentService;
+import com.parkingsystem.backend.service.UserService;
+
+import jakarta.validation.Valid;
+
+/**
+ * Controller per le operazioni di pagamento
+ */
+@RestController
+@RequestMapping("/api/payments")
+public class PaymentController {
+
+    @Autowired
+    private PaymentService paymentService;
+    
+    @Autowired
+    private UserService userService;
+    
+    private final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    
+    /**
+     * Crea un pagamento in base all'attività dell'utente
+     * @param requestBody I dettagli del pagamento
+     * @return Risposta con il pagamento creato
+     */
+    @PostMapping("/create")
+    public ResponseEntity<?> createPayment(@Valid @RequestBody Map<String, Object> requestBody) {
+        try {
+            // Ottieni l'utente autenticato
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            User user = userService.findByUsername(userDetails.getUsername());
+
+            // Estrai i dettagli del pagamento dal corpo della richiesta
+            String paymentMethod = (String) requestBody.get("paymentMethod");
+            
+            // Verifica se il metodo di pagamento è nullo o invalido
+            if (paymentMethod == null) {
+                throw new BadRequestException("Il metodo di pagamento è obbligatorio.");
+            }
+
+            Long parkingSpotId = requestBody.containsKey("parkingSpotId") ? 
+                    Long.valueOf(requestBody.get("parkingSpotId").toString()) : null;
+
+            Long reservationId = requestBody.containsKey("reservationId") ? 
+                    Long.valueOf(requestBody.get("reservationId").toString()) : null;
+
+            Long chargingRequestId = requestBody.containsKey("chargingRequestId") ? 
+                    Long.valueOf(requestBody.get("chargingRequestId").toString()) : null;
+
+            Double additionalAmount = requestBody.containsKey("additionalAmount") ? 
+                    (Double) requestBody.get("additionalAmount") : null;
+
+            Payment payment;
+
+            // Valida e chiama il servizio di pagamento appropriato in base ai parametri
+            if (parkingSpotId != null && chargingRequestId == null && reservationId == null) {
+                // Pagamento solo per il parcheggio
+                payment = paymentService.createPaymentForParking(user.getId(), parkingSpotId, paymentMethod);
+            } else if (chargingRequestId != null && parkingSpotId == null && reservationId == null) {
+                // Pagamento solo per la ricarica
+                payment = paymentService.createPaymentForChargingRequest(user.getId(), chargingRequestId, paymentMethod);
+            } else if (parkingSpotId != null && chargingRequestId != null && reservationId == null) {
+                // Pagamento per parcheggio e ricarica
+                payment = paymentService.createPaymentForParkingAndCharging(user.getId(), parkingSpotId, paymentMethod);
+            } else if (reservationId != null && chargingRequestId == null && parkingSpotId == null) {
+                // Pagamento per prenotazione
+                payment = paymentService.createPaymentForReservation(user.getId(), reservationId, paymentMethod);
+            } else if (chargingRequestId != null && additionalAmount != null) {
+                // Pagamento per ricarica aggiuntiva
+                payment = paymentService.createPaymentForAdditionalCharging(user.getId(), chargingRequestId, additionalAmount, paymentMethod);
+            } else {
+                // Gestisce richieste invalide o incomplete
+                throw new BadRequestException("Parametri di pagamento non validi. Fornire una combinazione valida di parametri.");
+            }
+
+            // Restituisce il pagamento creato come risposta
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertToDto(payment));
+
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Errore nella creazione del pagamento: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Ottieni un pagamento per ID
+     * @param id L'ID del pagamento
+     * @return Risposta con il pagamento
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getPayment(@PathVariable Long id) {
+        try {
+            // Ottieni l'utente autenticato
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            User user = userService.findByUsername(userDetails.getUsername());
+            
+            // Ottieni il pagamento
+            Payment payment = paymentService.getPaymentById(id);
+            
+            // Verifica se l'utente ha il permesso di accedere a questo pagamento
+            boolean isAdmin = user.getRole() == User.UserRole.ADMIN;
+            boolean isOwner = payment.getUser().getId().equals(user.getId());
+            
+            if (!isAdmin && !isOwner) {
+                throw new UnauthorizedException("Non sei autorizzato ad accedere a questo pagamento");
+            }
+            
+            return ResponseEntity.ok(convertToDto(payment));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (UnauthorizedException e) {
+            return ResponseEntity
+                    .status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Errore nel recupero del pagamento: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Ottieni i pagamenti per l'utente corrente
+     * @return Risposta con i pagamenti
+     */
+    @GetMapping("/user")
+    public ResponseEntity<?> getUserPayments() {
+        try {
+            // Ottieni l'utente autenticato
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            User user = userService.findByUsername(userDetails.getUsername());
+            
+            // Ottieni i pagamenti
+            List<Payment> payments = paymentService.getPaymentsByUserId(user.getId());
+            
+            List<PaymentDto> paymentDtos = payments.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(paymentDtos);
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Errore nel recupero dei pagamenti: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Converte il pagamento in DTO
+     * @param payment Il pagamento
+     * @return Il DTO del pagamento
+     */
+    private PaymentDto convertToDto(Payment payment) {
+        PaymentDto dto = new PaymentDto();
+        
+        dto.setId(payment.getId());
+        dto.setUserId(payment.getUser().getId());
+        dto.setUsername(payment.getUser().getUsername());
+        
+        if (payment.getReservation() != null) {
+            dto.setReservationId(payment.getReservation().getId());
+        }
+        
+        if (payment.getChargingRequest() != null) {
+            dto.setChargingRequestId(payment.getChargingRequest().getId());
+        }
+        
+        dto.setAmount(payment.getAmount());
+        dto.setCurrency(payment.getCurrency());
+        dto.setPaymentMethod(payment.getPaymentMethod());
+        dto.setStatus(payment.getStatus().toString());
+        dto.setType(payment.getType().toString());
+        
+        if (payment.getCardLastFour() != null) {
+            dto.setCardLastFour(payment.getCardLastFour());
+        }
+        
+        if (payment.getTransactionId() != null) {
+            dto.setTransactionId(payment.getTransactionId());
+        }
+        
+        if (payment.getPaymentDate() != null) {
+            dto.setPaymentDate(payment.getPaymentDate().format(dateTimeFormatter));
+        }
+        
+        return dto;
+    }
+    
+    /**
+     * Crea un pagamento per parcheggio e ricarica (combinato)
+     * @param requestBody I dettagli del pagamento
+     * @return Risposta con il pagamento creato
+     */
+    @PostMapping("/parking-and-charging")
+    public ResponseEntity<?> createParkingAndChargingPayment(@Valid @RequestBody Map<String, Object> requestBody) {
+        try {
+            // Ottieni l'utente autenticato
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            User user = userService.findByUsername(userDetails.getUsername());
+            
+            // Estrai i parametri della richiesta
+            Long parkingSpotId = Long.valueOf(requestBody.get("parkingSpotId").toString());
+            String paymentMethod = requestBody.get("paymentMethod").toString();
+            
+            // Crea il pagamento
+            Payment payment = paymentService.createPaymentForParkingAndCharging(user.getId(), parkingSpotId, paymentMethod);
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertToDto(payment));
+        } catch (BadRequestException e) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Errore nella creazione del pagamento: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Crea un pagamento per il parcheggio solo
+     * @param requestBody I dettagli del pagamento
+     * @return Risposta con il pagamento creato
+     */
+    @PostMapping("/parking")
+    public ResponseEntity<?> createParkingPayment(@Valid @RequestBody Map<String, Object> requestBody) {
+        try {
+            // Ottieni l'utente autenticato
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            User user = userService.findByUsername(userDetails.getUsername());
+            
+            // Estrai i parametri della richiesta
+            Long parkingSpotId = Long.valueOf(requestBody.get("parkingSpotId").toString());
+            String paymentMethod = requestBody.get("paymentMethod").toString();
+            
+            // Crea il pagamento
+            Payment payment = paymentService.createPaymentForParking(user.getId(), parkingSpotId, paymentMethod);
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertToDto(payment));
+        } catch (BadRequestException e) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Errore nella creazione del pagamento: " + e.getMessage()));
+        }
+    }
+}

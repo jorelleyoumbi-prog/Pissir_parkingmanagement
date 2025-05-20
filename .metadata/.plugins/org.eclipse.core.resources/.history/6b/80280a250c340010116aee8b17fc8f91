@@ -1,0 +1,346 @@
+package com.parkingsystem.frontend.controller;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import com.parkingsystem.frontend.dto.UserSession;
+import com.parkingsystem.frontend.service.BackendService;
+
+import jakarta.servlet.http.HttpSession;
+
+@Controller
+@RequestMapping("/admin")
+public class AdminController {
+
+    @Autowired
+    private BackendService backendService;
+    
+    private final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+
+    @GetMapping("/dashboard")
+    public String adminDashboard(HttpSession session, Model model) {
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated()) {
+            return "redirect:/login";
+        }
+        
+        if (!userSession.isAdmin()) {
+            return "redirect:/dashboard";
+        }
+        
+        model.addAttribute("user", userSession);
+        
+        try {
+            // Ottieni dati per la dashboard di amministrazione
+            Map<String, Object> dashboardData = backendService.get(
+                    "/admin/dashboard/summary", 
+                    Map.class, 
+                    userSession.getToken()
+            ).block();
+            
+            model.addAttribute("dashboardData", dashboardData);
+            
+            // Ottiene i posti auto
+            Map<String, Object>[] parkingSpots = backendService.get(
+                    "/admin/spots", 
+                    Map[].class, 
+                    userSession.getToken()
+            ).block();
+            
+            model.addAttribute("parkingSpots", parkingSpots);
+            
+            // Ottiene gli MWbot
+            Map<String, Object>[] mwbots = backendService.get(
+                    "/admin/mwbots", 
+                    Map[].class, 
+                    userSession.getToken()
+            ).block();
+            
+            model.addAttribute("mwbots", mwbots);
+            
+        } catch (Exception e) {
+            model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+        }
+        
+        return "admin/dashboard";
+    }
+    
+    @GetMapping("/spots")
+    public String manageParkingSpots(HttpSession session, Model model) {
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated() || !userSession.isAdmin()) {
+            return "redirect:/login";
+        }
+        
+        model.addAttribute("user", userSession);
+        
+        try {
+            // Ottiene tutti i posti auto
+            Map<String, Object>[] parkingSpots = backendService.get(
+                    "/admin/spots", 
+                    Map[].class, 
+                    userSession.getToken()
+            ).block();
+            
+            model.addAttribute("parkingSpots", parkingSpots);
+            
+        } catch (Exception e) {
+            model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+        }
+        
+        return "admin/spots";
+    }
+    
+    @PostMapping("/spots/create")
+    public String createParkingSpot(
+            @RequestParam String spotNumber,
+            @RequestParam(required = false, defaultValue = "false") boolean chargingAvailable,
+            @RequestParam String location,
+            HttpSession session,
+            RedirectAttributes redirectAttributes) {
+        
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated() || !userSession.isAdmin()) {
+            return "redirect:/login";
+        }
+        
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("spotNumber", spotNumber);
+            requestBody.put("chargingAvailable", chargingAvailable);
+            requestBody.put("location", location);
+            
+            backendService.post(
+                    "/admin/spots",
+                    requestBody,
+                    Map.class,
+                    userSession.getToken()
+            ).block();
+            
+            redirectAttributes.addFlashAttribute("success", "Posto auto creato con successo");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Errore nella creazione del posto auto: " + e.getMessage());
+        }
+        
+        return "redirect:/admin/spots";
+    }
+    
+    @GetMapping("/mwbots")
+    public String manageMWbots(HttpSession session, Model model) {
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated() || !userSession.isAdmin()) {
+            return "redirect:/login";
+        }
+        
+        model.addAttribute("user", userSession);
+        
+        try {
+            // Ottiene tutti gli MWbot
+            Map<String, Object>[] mwbots = backendService.get(
+                    "/admin/mwbots", 
+                    Map[].class, 
+                    userSession.getToken()
+            ).block();
+            
+            model.addAttribute("mwbots", mwbots);
+            
+        } catch (Exception e) {
+            model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+        }
+        
+        return "admin/mwbots";
+    }
+    
+    @PostMapping("/mwbots/create")
+    public String createMWbot(
+            @RequestParam String botId,
+            @RequestParam(required = false, defaultValue = "100") Integer batteryLevel,
+            @RequestParam(required = false, defaultValue = "11.0") Double chargingRateKw,
+            HttpSession session,
+            RedirectAttributes redirectAttributes) {
+        
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated() || !userSession.isAdmin()) {
+            return "redirect:/login";
+        }
+        
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("botId", botId);
+            requestBody.put("batteryLevel", batteryLevel);
+            requestBody.put("chargingRateKw", chargingRateKw);
+            requestBody.put("status", "AVAILABLE");
+            requestBody.put("maintenanceRequired", false);
+            
+            backendService.post(
+                    "/admin/mwbots",
+                    requestBody,
+                    Map.class,
+                    userSession.getToken()
+            ).block();
+            
+            redirectAttributes.addFlashAttribute("success", "MWbot creato con successo");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Errore nella creazione dell'MWbot: " + e.getMessage());
+        }
+        
+        return "redirect:/admin/mwbots";
+    }
+    
+    @PostMapping("/mwbots/{id}/maintenance")
+    public String toggleMWbotMaintenance(
+            @PathVariable Long id,
+            @RequestParam boolean maintenanceRequired,
+            HttpSession session,
+            RedirectAttributes redirectAttributes) {
+        
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated() || !userSession.isAdmin()) {
+            return "redirect:/login";
+        }
+        
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("maintenanceRequired", maintenanceRequired);
+            
+            backendService.put(
+                    "/admin/mwbots/" + id + "/maintenance",
+                    requestBody,
+                    Map.class,
+                    userSession.getToken()
+            ).block();
+            
+            redirectAttributes.addFlashAttribute("success", "Stato manutenzione MWbot aggiornato con successo");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Errore nell'aggiornamento dello stato di manutenzione: " + e.getMessage());
+        }
+        
+        return "redirect:/admin/mwbots";
+    }
+    
+    @GetMapping("/reports")
+    public String viewReports(
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            HttpSession session,
+            Model model) {
+        
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated() || !userSession.isAdmin()) {
+            return "redirect:/login";
+        }
+        
+        model.addAttribute("user", userSession);
+        
+        try {
+            LocalDateTime start = startDate != null ? 
+                    LocalDateTime.parse(startDate) : 
+                    LocalDateTime.now().minusDays(7);
+            
+            LocalDateTime end = endDate != null ? 
+                    LocalDateTime.parse(endDate) : 
+                    LocalDateTime.now();
+            
+            String reportType = type != null ? type : "revenue";
+            
+            // Ottiene i dati del report
+            Map<String, Object> reportData = backendService.get(
+                    "/admin/reports/" + reportType + 
+                    "?startDate=" + start.format(dateTimeFormatter) + 
+                    "&endDate=" + end.format(dateTimeFormatter),
+                    Map.class,
+                    userSession.getToken()
+            ).block();
+            
+            model.addAttribute("reportData", reportData);
+            model.addAttribute("reportType", reportType);
+            model.addAttribute("startDate", start);
+            model.addAttribute("endDate", end);
+            
+        } catch (Exception e) {
+            model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+        }
+        
+        return "admin/reports";
+    }
+    
+    @GetMapping("/settings")
+    public String manageSettings(HttpSession session, Model model) {
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated() || !userSession.isAdmin()) {
+            return "redirect:/login";
+        }
+        
+        model.addAttribute("user", userSession);
+        
+        try {
+            // Ottiene le tariffe attuali
+            Map<String, Object> rates = backendService.get(
+                    "/admin/rates", 
+                    Map.class, 
+                    userSession.getToken()
+            ).block();
+            
+            model.addAttribute("rates", rates);
+            
+        } catch (Exception e) {
+            model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+        }
+        
+        return "admin/settings";
+    }
+    
+    @PostMapping("/settings/rates")
+    public String updateRates(
+            @RequestParam Double parkingRate,
+            @RequestParam Double chargingRate,
+            HttpSession session,
+            RedirectAttributes redirectAttributes) {
+        
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+        
+        if (userSession == null || !userSession.isAuthenticated() || !userSession.isAdmin()) {
+            return "redirect:/login";
+        }
+        
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("baseRate", parkingRate);
+            requestBody.put("chargingRate", chargingRate);
+            
+            backendService.put(
+                    "/admin/rates",
+                    requestBody,
+                    Map.class,
+                    userSession.getToken()
+            ).block();
+            
+            redirectAttributes.addFlashAttribute("success", "Tariffe aggiornate con successo");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Errore nell'aggiornamento delle tariffe: " + e.getMessage());
+        }
+        
+        return "redirect:/admin/settings";
+    }
+}

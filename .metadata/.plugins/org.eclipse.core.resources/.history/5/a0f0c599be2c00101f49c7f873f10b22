@@ -1,0 +1,363 @@
+package com.parkingsystem.controller;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.parkingsystem.exception.BadRequestException;
+import com.parkingsystem.model.ChargingRequest;
+import com.parkingsystem.model.MWbot;
+import com.parkingsystem.model.ParkingSpot;
+import com.parkingsystem.mqtt.MqttPublisherInterface;
+import com.parkingsystem.service.ChargingService;
+import com.parkingsystem.service.MWbotService;
+import com.parkingsystem.service.ParkingService;
+import com.parkingsystem.service.UserService;
+
+
+
+
+/**
+ * Controller dedicato alla gestione e simulazione del sistema IoT
+ * Fornisce endpoint per monitorare lo stato del sistema e simulare eventi IoT
+ */
+@RestController
+@RequestMapping("/api/iot")
+public class IoTController {
+
+    @Autowired
+    private MqttPublisherInterface mqttPublisher;
+    
+    @Autowired
+    private ParkingService parkingService;
+    
+    @Autowired
+    private MWbotService mwbotService;
+    
+    @Autowired
+    private ChargingService chargingService;
+    
+    @Autowired
+    private UserService userService;
+    
+    /**
+     * Ottiene lo stato corrente del sistema IoT
+     * @return ResponseEntity con lo stato del sistema
+     */
+    @GetMapping("/status")
+    public ResponseEntity<?> getIoTSystemStatus() {
+        Map<String, Object> status = new HashMap<>();
+        
+        // Stato parcheggio
+        List<ParkingSpot> spots = parkingService.getAllParkingSpots();
+        long occupiedSpots = spots.stream().filter(ParkingSpot::isOccupied).count();
+        
+        Map<String, Object> parkingStatus = new HashMap<>();
+        parkingStatus.put("totalSpots", spots.size());
+        parkingStatus.put("occupiedSpots", occupiedSpots);
+        parkingStatus.put("availableSpots", spots.size() - occupiedSpots);
+        parkingStatus.put("spots", spots.stream().map(spot -> {
+            Map<String, Object> spotInfo = new HashMap<>();
+            spotInfo.put("id", spot.getId());
+            spotInfo.put("spotNumber", spot.getSpotNumber());
+            spotInfo.put("occupied", spot.isOccupied());
+            spotInfo.put("reserved", spot.isReserved());
+            spotInfo.put("chargingAvailable", spot.isChargingAvailable());
+            return spotInfo;
+        }).collect(Collectors.toList()));
+        
+        // Stato MWbot
+        List<MWbot> bots = mwbotService.getAllMWbots();
+        Map<String, Object> mwbotStatus = new HashMap<>();
+        mwbotStatus.put("total", bots.size());
+        mwbotStatus.put("available", bots.stream().filter(b -> b.getStatus() == MWbot.BotStatus.AVAILABLE).count());
+        mwbotStatus.put("busy", bots.stream().filter(b -> b.getStatus() == MWbot.BotStatus.BUSY).count());
+        mwbotStatus.put("maintenance", bots.stream().filter(MWbot::isMaintenanceRequired).count());
+        mwbotStatus.put("bots", bots.stream().map(bot -> {
+            Map<String, Object> botInfo = new HashMap<>();
+            botInfo.put("id", bot.getId());
+            botInfo.put("botId", bot.getBotId());
+            botInfo.put("status", bot.getStatus());
+            botInfo.put("batteryLevel", bot.getBatteryLevel());
+            botInfo.put("maintenanceRequired", bot.isMaintenanceRequired());
+            if (bot.getCurrentChargingRequest() != null) {
+                botInfo.put("currentChargingRequestId", bot.getCurrentChargingRequest().getId());
+            }
+            return botInfo;
+        }).collect(Collectors.toList()));
+        
+        // Stato richieste di ricarica attive
+        List<ChargingRequest> activeRequests = chargingService.getActiveChargingRequests();
+        Map<String, Object> chargingStatus = new HashMap<>();
+        chargingStatus.put("activeRequests", activeRequests.size());
+        chargingStatus.put("requests", activeRequests.stream().map(req -> {
+            Map<String, Object> reqInfo = new HashMap<>();
+            reqInfo.put("id", req.getId());
+            reqInfo.put("status", req.getStatus());
+            reqInfo.put("currentPercentage", req.getCurrentPercentage());
+            reqInfo.put("targetPercentage", req.getTargetPercentage());
+            reqInfo.put("spotId", req.getParkingSpot().getId());
+            reqInfo.put("userId", req.getUser().getId());
+            return reqInfo;
+        }).collect(Collectors.toList()));
+        
+        status.put("parking", parkingStatus);
+        status.put("mwbots", mwbotStatus);
+        status.put("charging", chargingStatus);
+        status.put("timestamp", LocalDateTime.now().toString());
+        
+        return ResponseEntity.ok(status);
+    }
+    
+    /**
+     * Centralizza la pubblicazione dei messaggi MQTT
+     */
+    private void publishMqttMessage(String topic, Map<String, Object> payload) {
+        try {
+            mqttPublisher.publish(topic, payload);
+        } catch (Exception e) {
+            System.err.println("Errore nella pubblicazione del messaggio MQTT: " + e.getMessage());
+            throw new RuntimeException("Errore durante la pubblicazione del messaggio MQTT.");
+        }
+    }
+    
+    /**
+     * Metodo per simulare e aggiornare database in un'unica operazione
+     */
+    private ResponseEntity<?> simulateAndPublish(String topic, Map<String, Object> payload, Runnable databaseUpdate) {
+        try {
+            publishMqttMessage(topic, payload);
+            databaseUpdate.run();
+            return ResponseEntity.ok(Map.of("message", "Simulazione completata", "timestamp", LocalDateTime.now().toString()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", "Errore nella simulazione: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Simula l'arrivo di un'auto al parcheggio
+     */
+    @PostMapping("/simulate/car-arrival")
+    public ResponseEntity<?> simulateCarArrival(@RequestBody Map<String, Object> data) {
+        String carId = data.containsKey("carId") ? data.get("carId").toString() : "CAR-" + Math.round(Math.random() * 1000);
+        
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("carId", carId);
+        payload.put("timestamp", LocalDateTime.now().toString());
+        
+        return simulateAndPublish("parkingsystem/parking/entrance", payload, () -> {});
+    }
+    
+    /**
+     * Simula l'uscita di un'auto dal parcheggio
+     */
+    @PostMapping("/simulate/car-exit")
+    public ResponseEntity<?> simulateCarExit(@RequestBody Map<String, Object> data) {
+        String carId = data.containsKey("carId") ? data.get("carId").toString() : "CAR-" + Math.round(Math.random() * 1000);
+        
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("carId", carId);
+        payload.put("timestamp", LocalDateTime.now().toString());
+        
+        return simulateAndPublish("parkingsystem/parking/exit", payload, () -> {});
+    }
+    
+    /**
+     * Simula il cambio di stato di occupazione di un posto auto
+     */
+    @PostMapping("/simulate/spot-status/{spotId}")
+    public ResponseEntity<?> simulateSpotStatusChange(@PathVariable Long spotId, @RequestBody Map<String, Object> data) {
+        String status = data.containsKey("status") ? data.get("status").toString() : "occupied";
+        
+        if (!status.equals("occupied") && !status.equals("free")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Status deve essere 'occupied' o 'free'"));
+        }
+        
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("status", status);
+        payload.put("timestamp", LocalDateTime.now().toString());
+        
+        return simulateAndPublish("parkingsystem/parking/spots/" + spotId + "/status", payload, () -> {
+            if (status.equals("occupied")) {
+                parkingService.markSpotAsOccupied(spotId);
+            } else {
+                parkingService.markSpotAsFree(spotId);
+            }
+        });
+    }
+    
+    /**
+     * Simula un cambio di stato del MWbot
+     */
+    @PostMapping("/simulate/mwbot-status/{botId}")
+    public ResponseEntity<?> simulateMWbotStatusChange(@PathVariable String botId, @RequestBody Map<String, Object> data) {
+        String statusStr = data.containsKey("status") ? data.get("status").toString() : "AVAILABLE";
+        Integer batteryLevel = data.containsKey("batteryLevel") ? Integer.valueOf(data.get("batteryLevel").toString()) : 100;
+        
+        MWbot.BotStatus status;
+        try {
+            status = MWbot.BotStatus.valueOf(statusStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Stato non valido. Stati validi: AVAILABLE, BUSY, IDLE, RECHARGING, MAINTENANCE"));
+        }
+        
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("botId", botId);
+        payload.put("status", statusStr);
+        payload.put("batteryLevel", batteryLevel);
+        payload.put("timestamp", LocalDateTime.now().toString());
+        
+        return simulateAndPublish("parkingsystem/mwbot/status/" + botId, payload, () -> {
+            MWbot bot = mwbotService.getMWbotByBotId(botId);
+            bot.setStatus(status);
+            bot.setBatteryLevel(batteryLevel);
+            try {
+				mwbotService.updateMWbot(bot.getId(), bot);
+			} catch (org.apache.coyote.BadRequestException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+        });
+    }
+    
+    /**
+     * Simula un aggiornamento del progresso di ricarica
+     */
+    @PostMapping("/simulate/charging-progress/{requestId}")
+    public ResponseEntity<?> simulateChargingProgress(@PathVariable Long requestId, @RequestBody Map<String, Object> data) throws BadRequestException {
+
+        Integer percentage = data.containsKey("percentage") ? Integer.valueOf(data.get("percentage").toString()) : 50;
+
+        if (percentage < 0 || percentage > 100) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Percentuale deve essere tra 0 e 100"));
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("requestId", requestId);
+        payload.put("currentPercentage", percentage);
+        payload.put("timestamp", LocalDateTime.now().toString());
+
+        return simulateAndPublish("parkingsystem/mwbot/charging/" + requestId + "/progress", payload, () -> {
+            try {
+                chargingService.updateChargingProgress(requestId, percentage);
+            } catch (Exception e) {
+                throw new RuntimeException("Errore durante updateChargingProgress: " + e.getMessage());
+            }
+        });
+    }
+
+    
+    /**
+     * Simula il completamento di una ricarica
+     */
+    @PostMapping("/simulate/charging-completion/{requestId}")
+    public ResponseEntity<?> simulateChargingCompletion(@PathVariable Long requestId, @RequestBody Map<String, Object> data) {
+        Integer finalPercentage = data.containsKey("finalPercentage") ? Integer.valueOf(data.get("finalPercentage").toString()) : 100;
+        
+        if (finalPercentage < 0 || finalPercentage > 100) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Percentuale finale deve essere tra 0 e 100"));
+        }
+        
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("requestId", requestId);
+        payload.put("status", "COMPLETED");
+        payload.put("finalPercentage", finalPercentage);
+        payload.put("timestamp", LocalDateTime.now().toString());
+        
+        return simulateAndPublish("parkingsystem/mwbot/charging/" + requestId + "/status", payload, () -> {
+            chargingService.completeCharging(requestId);
+        });
+    }
+    
+    /**
+     * Simula un ciclo completo di parcheggio, ricarica e uscita
+     */
+    @PostMapping("/simulate/complete-cycle")
+    public ResponseEntity<?> simulateCompleteCycle(@RequestBody Map<String, Object> data) {
+        String carId = data.containsKey("carId") ? data.get("carId").toString() : "CAR-" + Math.round(Math.random() * 1000);
+        Long spotId = data.containsKey("spotId") ? Long.valueOf(data.get("spotId").toString()) : 1L;
+        Long userId = data.containsKey("userId") ? Long.valueOf(data.get("userId").toString()) : 1L;
+        Integer initialBattery = data.containsKey("initialBattery") ? Integer.valueOf(data.get("initialBattery").toString()) : 20;
+        Integer targetBattery = data.containsKey("targetBattery") ? Integer.valueOf(data.get("targetBattery").toString()) : 80;
+        String mwbotId = data.containsKey("mwbotId") ? data.get("mwbotId").toString() : "MWB001";
+        
+        simulateCompleteCycleAsync(carId, spotId, userId, initialBattery, targetBattery, mwbotId);
+        
+        return ResponseEntity.ok(Map.of(
+            "message", "Simulazione ciclo completo avviata",
+            "carId", carId,
+            "spotId", spotId,
+            "userId", userId,
+            "initialBattery", initialBattery,
+            "targetBattery", targetBattery,
+            "mwbotId", mwbotId
+        ));
+    }
+
+    @Async
+    private void simulateCompleteCycleAsync(String carId, Long spotId, Long userId, Integer initialBattery, Integer targetBattery, String mwbotId) {
+        try {
+            simulateCarArrival(Map.of("carId", carId));
+            Thread.sleep(2000);
+            simulateSpotStatusChange(spotId, Map.of("status", "occupied"));
+            Thread.sleep(2000);
+            ChargingRequest request = chargingService.createChargingRequest(userId, spotId, initialBattery, targetBattery, true);
+            simulateMWbotStatusChange(mwbotId, Map.of("status", "BUSY", "batteryLevel", 90));
+            Thread.sleep(2000);
+            
+            int currentBattery = initialBattery;
+            while (currentBattery < targetBattery) {
+                currentBattery += 10;
+                if (currentBattery > targetBattery) {
+                    currentBattery = targetBattery;
+                }
+                simulateChargingProgress(request.getId(), Map.of("percentage", currentBattery));
+                Thread.sleep(3000);
+            }
+            simulateChargingCompletion(request.getId(), Map.of("finalPercentage", targetBattery));
+            Thread.sleep(2000);
+            simulateMWbotStatusChange(mwbotId, Map.of("status", "AVAILABLE", "batteryLevel", 85));
+            Thread.sleep(2000);
+            simulateSpotStatusChange(spotId, Map.of("status", "free"));
+            Thread.sleep(1000);
+            simulateCarExit(Map.of("carId", carId));
+        } catch (Exception e) {
+            System.err.println("Errore durante la simulazione del ciclo completo: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    
+    /**
+     * Endpoint per testare la connessione MQTT
+     */
+    @GetMapping("/mqtt-test")
+    public ResponseEntity<?> testMqttConnection() {
+        try {
+            mqttPublisher.publish("parkingsystem/test", Map.of(
+                "message", "Test connection",
+                "timestamp", LocalDateTime.now().toString()
+            ));
+            return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "message", "MQTT test message published successfully"
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.ok(Map.of(
+                "status", "error",
+                "message", "Failed to publish MQTT test message: " + e.getMessage()
+            ));
+        }
+    }
+}

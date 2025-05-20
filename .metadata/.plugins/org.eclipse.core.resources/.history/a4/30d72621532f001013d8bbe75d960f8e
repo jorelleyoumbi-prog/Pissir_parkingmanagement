@@ -1,0 +1,41 @@
+package com.parkingsystem.backend.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * Data Transfer Object for ParkingSpot entity
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ParkingSpotDto {
+    
+    private Long id;
+    private String spotNumber;
+    private String location;
+    
+    private boolean occupied;
+    private boolean chargingAvailable;
+    private boolean reserved;
+    
+    private String occupiedSince;
+    private String lastUpdated;
+    
+    // Lombok genera isOccupied(), isChargingAvailable(), isReserved(),
+    // ma il controller si aspetta getXxx(), quindi li aggiungiamo esplicitamente:
+
+    public boolean getOccupied() {
+        return occupied;
+    }
+
+    public boolean getChargingAvailable() {
+        return chargingAvailable;
+    }
+
+    public boolean getReserved() {
+        return reserved;
+    }
+
+}

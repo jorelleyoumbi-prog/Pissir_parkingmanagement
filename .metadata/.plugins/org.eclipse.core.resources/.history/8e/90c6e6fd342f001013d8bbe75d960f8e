@@ -1,0 +1,110 @@
+package com.parkingsystem.config;
+
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.integration.annotation.ServiceActivator;
+import org.springframework.integration.channel.DirectChannel;
+import org.springframework.integration.core.MessagingTemplate;
+import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
+import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
+import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannelAdapter;
+import org.springframework.integration.mqtt.outbound.MqttPahoMessageHandler;
+import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageHandler;
+
+import com.parkingsystem.service.ChargingSimulationService;
+
+import lombok.Value;
+
+@Configuration
+@ConditionalOnProperty(name = "mqtt.enabled", havingValue = "true")
+public class MqttConfig {
+
+    private final String brokerUrl;
+    private final String clientId;
+    private final String topicRequest;
+    private final String topicStarted;
+    private final String topicProgress;
+    private final String topicCompleted;
+
+    public MqttConfig(
+            @Value("${mqtt.broker-url}") String brokerUrl,
+            @Value("${mqtt.client-id}") String clientId,
+            @Value("${mqtt.topics.request}") String topicRequest,
+            @Value("${mqtt.topics.started}") String topicStarted,
+            @Value("${mqtt.topics.progress}") String topicProgress,
+            @Value("${mqtt.topics.completed}") String topicCompleted
+    ) {
+        this.brokerUrl     = brokerUrl;
+        this.clientId      = clientId;
+        this.topicRequest  = topicRequest;
+        this.topicStarted  = topicStarted;
+        this.topicProgress = topicProgress;
+        this.topicCompleted= topicCompleted;
+    }
+
+    @Bean
+    public MqttPahoClientFactory mqttClientFactory() {
+        var opts = new MqttConnectOptions();
+        opts.setServerURIs(new String[]{ brokerUrl });
+        opts.setCleanSession(true);
+        var factory = new DefaultMqttPahoClientFactory();
+        factory.setConnectionOptions(opts);
+        return factory;
+    }
+
+    // ---- Channels ----
+    @Bean
+    public MessageChannel mqttOutboundChannel() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    public MessageChannel mqttRequestInputChannel() {
+        return new DirectChannel();
+    }
+
+    // ---- Outbound Handler ----
+    @Bean
+    @ServiceActivator(inputChannel = "mqttOutboundChannel")
+    public MessageHandler mqttOutboundHandler(MqttPahoClientFactory factory) {
+        var handler = new MqttPahoMessageHandler(clientId + "_out", factory);
+        handler.setAsync(true);
+        // default topic can be overridden via header "mqtt_topic"
+        handler.setConverter(new DefaultPahoMessageConverter());
+        return handler;
+    }
+
+    // ---- Inbound Adapter ----
+    @Bean
+    public MqttPahoMessageDrivenChannelAdapter mqttInboundAdapter(MqttPahoClientFactory factory) {
+        var adapter = new MqttPahoMessageDrivenChannelAdapter(
+            clientId + "_in",
+            factory,
+            topicRequest
+        );
+        adapter.setOutputChannel(mqttRequestInputChannel());
+        adapter.setConverter(new DefaultPahoMessageConverter());
+        adapter.setQos(1);
+        return adapter;
+    }
+
+    // ---- Inbound Service Activator ----
+    @Bean
+    @ServiceActivator(inputChannel = "mqttRequestInputChannel")
+    public MessageHandler requestMessageHandler(ChargingSimulationService simSvc) {
+        return message -> {
+            String payload = (String) message.getPayload();
+            simSvc.handleChargingRequest(payload);
+        };
+    }
+
+    // ---- Convenience template for sending dynamic topics ----
+    @Bean
+    public MessagingTemplate mqttTemplate(MessageChannel mqttOutboundChannel) {
+        return new MessagingTemplate(mqttOutboundChannel);
+    }
+}

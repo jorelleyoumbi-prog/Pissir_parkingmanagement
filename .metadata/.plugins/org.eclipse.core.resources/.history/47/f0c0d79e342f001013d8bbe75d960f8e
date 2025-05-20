@@ -1,0 +1,67 @@
+package com.parkingsystem.repository;
+
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import com.parkingsystem.model.ChargingRequest;
+import com.parkingsystem.model.MWbot;
+import com.parkingsystem.model.MWbot.BotStatus;
+
+/**
+ * Repository for MWbot entity
+ */
+@Repository
+public interface MWbotRepository extends JpaRepository<MWbot, Long> {
+    
+    /**
+     * Find an MWbot by bot ID
+     * @param botId The bot ID
+     * @return Optional containing the MWbot if found
+     */
+    Optional<MWbot> findByBotId(String botId);
+    
+    /**
+     * Find MWbots by status
+     * @param status The status to search for
+     * @return List of MWbots with the status
+     */
+    List<MWbot> findByStatus(BotStatus status);
+    
+    boolean existsByBotId(String botId);
+    
+    /**
+     * Find MWbots by battery level less than a threshold
+     * @param batteryLevel The battery level threshold
+     * @return List of MWbots with battery level less than the threshold
+     */
+    List<MWbot> findByBatteryLevelLessThan(Integer batteryLevel);
+    
+    /**
+     * Find MWbots that require maintenance
+     * @param maintenanceRequired Maintenance required flag
+     * @return List of MWbots that require maintenance
+     */
+    List<MWbot> findByMaintenanceRequired(Boolean maintenanceRequired);
+    
+    /**
+     * Find MWbot by current charging request
+     * @param currentChargingRequest The charging request
+     * @return Optional containing the MWbot if found
+     */
+    List<MWbot> findByCurrentChargingRequestId(Long chargingRequestId);     
+    /**
+     * Find MWbots that are available (idle, not in maintenance, sufficient battery)
+     * @param status The status (typically IDLE)
+     * @param maintenanceRequired Maintenance required flag (typically false)
+     * @param batteryLevel Minimum battery level
+     * @return List of available MWbots
+     */
+    List<MWbot> findByStatusAndMaintenanceRequiredAndBatteryLevelGreaterThan(
+            BotStatus status, Boolean maintenanceRequired, Integer batteryLevel);
+    
+    Optional<MWbot> findFirstByStatusAndMaintenanceRequiredFalseAndBatteryLevelGreaterThan(MWbot.BotStatus status, int batteryLevel);
+
+}

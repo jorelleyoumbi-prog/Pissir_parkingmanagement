@@ -1,0 +1,208 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.model.User;
+import com.parkingsystem.repository.UserRepository;
+
+/**
+ * Service for user management operations
+ */
+@Service
+public class UserService implements UserDetailsService {
+
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+    
+    /**
+     * Find a user by their username
+     * @param username The username
+     * @return The user
+     */
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
+    }
+    
+    /**
+     * Get user by username
+     * @param username The username
+     * @return The user
+     */
+    public User getUserByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
+    }
+    
+    /**
+     * Find a user by their ID
+     * @param id The user ID
+     * @return The user
+     */
+    public User findById(Long id) {
+        return userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+    }
+    
+    /**
+     * Check if a username exists
+     * @param username The username
+     * @return True if exists
+     */
+    public boolean existsByUsername(String username) {
+        return userRepository.existsByUsername(username);
+    }
+    
+    /**
+     * Check if an email exists
+     * @param email The email
+     * @return True if exists
+     */
+    public boolean existsByEmail(String email) {
+        return userRepository.existsByEmail(email);
+    }
+    
+    /**
+     * Register a new user
+     * @param user The user to register
+     * @return The registered user
+     */
+    public User registerUser(User user) {
+        // Encode password
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
+        
+        return userRepository.save(user);
+    }
+    
+    /**
+     * Upgrade a user to premium
+     * @param userId The user ID
+     * @param creditCardNumber The credit card number
+     * @param creditCardExpiry The credit card expiry
+     * @param creditCardCvv The credit card CVV
+     * @return The upgraded user
+     */
+    public User upgradeToPremium(Long userId, String creditCardNumber, String creditCardExpiry, String creditCardCvv) {
+        User user = findById(userId);
+        
+        if (user.getRole() == User.UserRole.PREMIUM_USER) {
+            throw new BadRequestException("User is already a premium user");
+        }
+        
+        user.setRole(User.UserRole.PREMIUM_USER);
+        user.setCreditCardNumber(creditCardNumber);
+        user.setCreditCardExpiry(creditCardExpiry);
+        user.setCreditCardCvv(creditCardCvv);
+        user.setUpdatedAt(LocalDateTime.now());
+        
+        return userRepository.save(user);
+    }
+    
+    /**
+     * Update a user
+     * @param id The user ID
+     * @param userDetails The updated user details
+     * @return The updated user
+     */
+    public User updateUser(Long id, User userDetails) {
+        User user = findById(id);
+        
+        // Only update fields that are not null
+        if (userDetails.getEmail() != null) {
+            user.setEmail(userDetails.getEmail());
+        }
+        
+        if (userDetails.getFullName() != null) {
+            user.setFullName(userDetails.getFullName());
+        }
+        
+        if (userDetails.getPassword() != null && !userDetails.getPassword().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(userDetails.getPassword()));
+        }
+        
+        if (userDetails.getCarModel() != null) {
+            user.setCarModel(userDetails.getCarModel());
+        }
+        
+        if (userDetails.getCarLicensePlate() != null) {
+            user.setCarLicensePlate(userDetails.getCarLicensePlate());
+        }
+        
+        if (userDetails.getBatteryCapacityKw() != null) {
+            user.setBatteryCapacityKw(userDetails.getBatteryCapacityKw());
+        }
+        
+        if (userDetails.getRole() != null) {
+            user.setRole(userDetails.getRole());
+        }
+        
+        user.setUpdatedAt(LocalDateTime.now());
+        
+        return userRepository.save(user);
+    }
+    
+    /**
+     * Get all users
+     * @return List of users
+     */
+    public List<User> getAllUsers() {
+        List<User> users = new ArrayList<>();
+        userRepository.findAll().forEach(users::add);
+        return users;
+    }
+    
+    /**
+     * Get all premium users
+     * @return List of premium users
+     */
+    public List<User> getAllPremiumUsers() {
+        return userRepository.findByRole(User.UserRole.PREMIUM_USER);
+    }
+    
+    /**
+     * Get all admins
+     * @return List of admins
+     */
+    public List<User> getAllAdmins() {
+        return userRepository.findByRole(User.UserRole.ADMIN);
+    }
+    
+    /**
+     * Delete a user
+     * @param id The user ID
+     */
+    public void deleteUser(Long id) {
+        User user = findById(id);
+        userRepository.delete(user);
+    }
+
+    /**
+     * Load user details for Spring Security
+     */
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = findByUsername(username);
+        
+        return org.springframework.security.core.userdetails.User.builder()
+                .username(user.getUsername())
+                .password(user.getPassword())
+                .roles(user.getRole().toString())
+                .build();
+    }
+}

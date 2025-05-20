@@ -1,0 +1,139 @@
+package com.parkingsystem.backend.controller;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.parkingsystem.backend.dto.ParkingSpotDto;
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.service.ParkingService;
+
+/**
+ * Controller per le operazioni relative ai posti auto
+ */
+@RestController
+@RequestMapping("/api/parking")
+public class ParkingController {
+
+    @Autowired
+    private ParkingService parkingService;
+    
+    @GetMapping("/spots")
+    public ResponseEntity<?> getAllParkingSpots() {
+        try {
+            List<ParkingSpot> spots = parkingService.getAllParkingSpots();
+            List<ParkingSpotDto> spotDtos = spots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(spotDtos);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/spots/{id}")
+    public ResponseEntity<?> getParkingSpot(@PathVariable Long id) {
+        try {
+            ParkingSpot spot = parkingService.getParkingSpotById(id);
+            return ResponseEntity.ok(convertToDto(spot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/availability")
+    public ResponseEntity<?> findAvailableSpots(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "false") boolean chargingRequired) {
+        try {
+            List<ParkingSpot> availableSpots = parkingService.findAvailableSpots(startTime, endTime, chargingRequired);
+            List<ParkingSpotDto> spotDtos = availableSpots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(spotDtos);
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Errore nel trovare i posti auto disponibili: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Crea un nuovo posto auto (solo ADMIN)
+     */
+    @PostMapping("/spots")
+    public ResponseEntity<?> createParkingSpot(@RequestBody ParkingSpotDto dto) {
+        try {
+            ParkingSpot spot = new ParkingSpot();
+            spot.setSpotNumber(dto.getSpotNumber());
+            spot.setChargingAvailable(dto.isChargingAvailable());
+            spot.setLocation(dto.getLocation());
+            spot.setOccupied(false);
+            spot.setReserved(false);
+            spot.setLastUpdated(LocalDateTime.now());
+            
+            ParkingSpot created = parkingService.createParkingSpot(spot);
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertToDto(created));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Failed to create parking spot: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Aggiorna lo stato di un posto auto (chiamato dall'iot-service)
+     */
+    @PutMapping("/spots/{spotId}/status")
+    public ResponseEntity<?> updateParkingSpotStatus(
+            @PathVariable String spotId,
+            @RequestBody Map<String, Object> data) {
+        try {
+            String status = data.get("status").toString();
+            boolean occupied = status.equalsIgnoreCase("occupied");
+            
+            // Aggiorna lo stato del posto nel database tramite il servizio
+            ParkingSpot updatedSpot;
+            if (occupied) {
+                updatedSpot = parkingService.markSpotAsOccupied(Long.valueOf(spotId));
+            } else {
+                updatedSpot = parkingService.markSpotAsFree(Long.valueOf(spotId));
+            }
+            
+            return ResponseEntity.ok(convertToDto(updatedSpot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    private ParkingSpotDto convertToDto(ParkingSpot parkingSpot) {
+        ParkingSpotDto dto = new ParkingSpotDto();
+        dto.setId(parkingSpot.getId());
+        dto.setSpotNumber(parkingSpot.getSpotNumber());
+        dto.setOccupied(parkingSpot.isOccupied());
+        dto.setReserved(parkingSpot.isReserved());
+        dto.setChargingAvailable(parkingSpot.isChargingAvailable());
+        dto.setLocation(parkingSpot.getLocation());
+        return dto;
+    }
+}

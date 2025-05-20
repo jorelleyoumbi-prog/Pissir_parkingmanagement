@@ -1,0 +1,367 @@
+package com.parkingsystem.mqtt;
+
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.integration.annotation.ServiceActivator;
+import org.springframework.integration.mqtt.support.MqttHeaders;
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.parkingsystem.model.MWbot;
+import com.parkingsystem.service.ChargingService;
+import com.parkingsystem.service.MWbotService;
+import com.parkingsystem.service.ParkingService;
+
+import jakarta.websocket.MessageHandler;
+
+/**
+ * MQTT subscriber for handling incoming MQTT messages
+ */
+@Component
+public class MqttSubscriber {
+
+    @Value("${mqtt.enabled:false}")
+    private boolean mqttEnabled;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    @Autowired
+    private ParkingService parkingService;
+    
+    @Autowired
+    private ChargingService chargingService;
+    
+    @Autowired
+    private MWbotService mwbotService;
+    
+    // Max retry attempts and delay
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final long INITIAL_RETRY_DELAY = 1000L;  // 1 second
+
+    /**
+     * Handle a parking sensor update message with retry logic.
+     * @param message The MQTT message
+     * @param topic The MQTT topic
+     */
+    public void handleParkingSensorUpdateWithRetry(String message, String topic) {
+        int retryCount = 0;
+        boolean success = false;
+
+        while (retryCount < MAX_RETRY_ATTEMPTS && !success) {
+            try {
+                handleParkingSensorUpdate(message, topic);  // Passa direttamente la stringa
+                success = true;  // Success, exit the loop
+            } catch (Exception e) {
+                retryCount++;
+                System.err.println("Error processing parking sensor update. Attempt " + retryCount + " of " + MAX_RETRY_ATTEMPTS);
+                if (retryCount < MAX_RETRY_ATTEMPTS) {
+                    try {
+                        // Exponential backoff
+                        long retryDelay = INITIAL_RETRY_DELAY * (long) Math.pow(2, retryCount - 1);
+                        TimeUnit.MILLISECONDS.sleep(retryDelay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        }
+
+        if (!success) {
+            System.err.println("Failed to process parking sensor update after " + MAX_RETRY_ATTEMPTS + " attempts.");
+        }
+    }
+
+
+    
+    /**
+     * Handle a parking sensor update message with retry logic.
+     * @param message The MQTT message
+     * @param topic The MQTT topic
+     */
+    public void handleParkingSensorUpdate(String message, String topic) {
+        int retryCount = 0;
+        boolean success = false;
+
+        while (retryCount < MAX_RETRY_ATTEMPTS && !success) {
+            try {
+                Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+                
+                // Estrae l'ID del posto dall'URL del topic: parkingsystem/parking/spots/1/status -> 1
+                String[] topicParts = topic.split("/");
+                if (topicParts.length >= 4) {
+                    Long spotId = Long.valueOf(topicParts[3]);
+                    
+                    // Controlla lo stato riportato nel messaggio
+                    String status = null;
+                    if (payload.containsKey("status") && payload.get("status") != null) {
+                        status = payload.get("status").toString();
+                    }
+                    
+                    // Gestione dello stato
+                    if (status != null) {
+                        if (status.equalsIgnoreCase("occupied")) {
+                            parkingService.markSpotAsOccupied(spotId);
+                            System.out.println("[MQTT] Parking spot " + spotId + " marked as occupied");
+                        } else if (status.equalsIgnoreCase("free")) {
+                            parkingService.markSpotAsFree(spotId);
+                            System.out.println("[MQTT] Parking spot " + spotId + " marked as free");
+                        } else {
+                            System.err.println("[MQTT] Unexpected status: " + status);
+                        }
+                        success = true;  // Se il messaggio è stato processato con successo
+                    } else {
+                        System.err.println("[MQTT] Missing or null 'status' field in the message");
+                    }
+                }
+            } catch (Exception e) {
+                retryCount++;
+                System.err.println("Error processing parking sensor update. Attempt " + retryCount + " of " + MAX_RETRY_ATTEMPTS);
+                if (retryCount < MAX_RETRY_ATTEMPTS) {
+                    try {
+                        // Exponential backoff
+                        long retryDelay = INITIAL_RETRY_DELAY * (long) Math.pow(2, retryCount - 1);
+                        TimeUnit.MILLISECONDS.sleep(retryDelay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        }
+
+        if (!success) {
+            System.err.println("Failed to process parking sensor update after " + MAX_RETRY_ATTEMPTS + " attempts.");
+        }
+    }
+
+
+    
+    @Bean
+    @ServiceActivator(inputChannel = "mqttInboundChannel")
+    public MessageHandler inboundMessageHandler() {
+        return message -> {
+            String topic = (String) message.getHeaders().get(MqttHeaders.RECEIVED_TOPIC);
+            String payload = (String) message.getPayload();
+            processMessage(topic, payload);
+        };
+    }
+    
+    /**
+     * Handle a charging update message (progresso della ricarica)
+     * @param message The MQTT message
+     * @param topic Il topic MQTT
+     */
+    public void handleChargingProgressUpdate(String message, String topic) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            
+            // Estrae l'ID della richiesta dal messaggio
+            if (payload.containsKey("requestId") && payload.containsKey("currentPercentage")) {
+                Long requestId = Long.valueOf(payload.get("requestId").toString());
+                Integer currentPercentage = Integer.valueOf(payload.get("currentPercentage").toString());
+                
+                // Aggiorna lo stato della ricarica
+                chargingService.updateBatteryPercentage(requestId, currentPercentage);
+                System.out.println("[MQTT] Charging request " + requestId + " updated to " + currentPercentage + "%");
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing charging progress update: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Handle a charging completion message (completamento della ricarica)
+     * @param message The MQTT message
+     * @param topic Il topic MQTT
+     */
+    public void handleChargingStatusUpdate(String message, String topic) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            
+            // Estrae l'ID della richiesta e lo stato dal messaggio
+            if (payload.containsKey("requestId") && payload.containsKey("status")) {
+                Long requestId = Long.valueOf(payload.get("requestId").toString());
+                String status = payload.get("status").toString();
+                
+                // Se lo stato è "COMPLETED", completa la richiesta
+                if (status.equalsIgnoreCase("COMPLETED")) {
+                    chargingService.completeChargingRequest(requestId);
+                    System.out.println("[MQTT] Charging request " + requestId + " completed");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing charging status update: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Handle a MWbot status update message
+     * @param message The MQTT message
+     */
+    public void handleMWbotStatusUpdate(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            
+            String botId = payload.get("botId").toString();
+            String statusStr = payload.get("status").toString();
+            
+            MWbot.BotStatus status;
+            try {
+                status = MWbot.BotStatus.valueOf(statusStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                System.err.println("Invalid bot status: " + statusStr);
+                return;
+            }
+            
+            MWbot bot = mwbotService.getMWbotByBotId(botId);
+            if (bot != null) {
+                bot.setStatus(status);
+                
+                // Aggiorna anche il livello batteria se presente
+                if (payload.containsKey("batteryLevel")) {
+                    Integer batteryLevel = Integer.valueOf(payload.get("batteryLevel").toString());
+                    bot.setBatteryLevel(batteryLevel);
+                }
+                
+                mwbotService.updateMWbot(bot.getId(), bot);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing MWbot status update: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Handle a MWbot battery update message
+     * @param message The MQTT message
+     */
+    public void handleMWbotBatteryUpdate(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            
+            String botId = payload.get("botId").toString();
+            int batteryLevel = Integer.parseInt(payload.get("batteryLevel").toString());
+            
+            MWbot bot = mwbotService.getMWbotByBotId(botId);
+            if (bot != null) {
+                bot.setBatteryLevel(batteryLevel);
+                mwbotService.updateMWbot(bot.getId(), bot);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing MWbot battery update: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Handle a MWbot maintenance request
+     * @param message The MQTT message
+     */
+    public void handleMWbotMaintenance(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            
+            String botId = payload.get("botId").toString();
+            boolean maintenanceRequired = Boolean.parseBoolean(payload.get("maintenanceRequired").toString());
+            
+            MWbot bot = mwbotService.getMWbotByBotId(botId);
+            if (bot != null) {
+                bot.setMaintenanceRequired(maintenanceRequired);
+                if (payload.containsKey("reason")) {
+                    bot.setErrorMessage(payload.get("reason").toString());
+                }
+                mwbotService.updateMWbot(bot.getId(), bot);
+                
+                System.out.println("[MQTT] Maintenance status updated for bot: " + botId);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing MWbot maintenance: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Handle a parking entrance event
+     * @param message The MQTT message
+     */
+    public void handleParkingEntranceEvent(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            
+            // Qui dovresti implementare la logica per gestire l'ingresso di un'auto nel parcheggio
+            // Ad esempio, potresti cercare una prenotazione attiva per l'auto o assegnare un posto libero
+            
+            System.out.println("[MQTT] Car entrance event received: " + message);
+            
+            // Esempio: se c'è un carId nel messaggio, potresti cercare una prenotazione associata
+            if (payload.containsKey("carId")) {
+                String carId = payload.get("carId").toString();
+                System.out.println("[MQTT] Car with ID " + carId + " entered the parking");
+                
+                // Implementa qui la tua logica di business
+                // Ad esempio: parkingService.handleCarEntry(carId);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing parking entrance event: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Handle a parking exit event
+     * @param message The MQTT message
+     */
+    public void handleParkingExitEvent(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            
+            // Qui dovresti implementare la logica per gestire l'uscita di un'auto dal parcheggio
+            // Ad esempio, calcolare il pagamento dovuto, liberare il posto, ecc.
+            
+            System.out.println("[MQTT] Car exit event received: " + message);
+            
+            // Esempio: se c'è un carId nel messaggio, potresti cercare l'auto nel sistema
+            if (payload.containsKey("carId")) {
+                String carId = payload.get("carId").toString();
+                System.out.println("[MQTT] Car with ID " + carId + " exited the parking");
+                
+                // Implementa qui la tua logica di business
+                // Ad esempio: parkingService.handleCarExit(carId);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing parking exit event: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Process a message based on topic
+     * @param topic The MQTT topic
+     * @param message The MQTT message
+     */
+    public void processMessage(String topic, String message) {
+        // Log per debug
+        System.out.println("[MQTT] Received message on topic: " + topic);
+        System.out.println("[MQTT] Message: " + message);
+        
+        // Gestione dei vari topic
+        if (topic.matches("parkingsystem/parking/spots/\\d+/status")) {
+            handleParkingSensorUpdate(message, topic);
+        } else if (topic.matches("parkingsystem/mwbot/charging/\\d+/progress")) {
+            handleChargingProgressUpdate(message, topic);
+        } else if (topic.matches("parkingsystem/mwbot/charging/\\d+/status")) {
+            handleChargingStatusUpdate(message, topic);
+        } else if (topic.startsWith("parkingsystem/mwbot/status/")) {
+            handleMWbotStatusUpdate(message);
+        } else if (topic.startsWith("parkingsystem/mwbot/battery/")) {
+            handleMWbotBatteryUpdate(message);
+        } else if (topic.startsWith("parkingsystem/mwbot/maintenance/")) {
+            handleMWbotMaintenance(message);
+        } else if (topic.equals("parkingsystem/parking/entrance")) {
+            handleParkingEntranceEvent(message);
+        } else if (topic.equals("parkingsystem/parking/exit")) {
+            handleParkingExitEvent(message);
+        } else {
+            System.out.println("[MQTT] Unhandled topic: " + topic);
+        }
+    }
+}

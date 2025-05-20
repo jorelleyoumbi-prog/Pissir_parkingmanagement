@@ -1,0 +1,399 @@
+package com.parkingsystem.backend.controller;
+
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import com.parkingsystem.backend.dto.ParkingSpotDto;
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.model.ChargingRequest;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.model.Reservation;
+import com.parkingsystem.backend.model.User;
+import com.parkingsystem.backend.repository.ChargingRequestRepository;
+import com.parkingsystem.backend.repository.ParkingSpotRepository;
+import com.parkingsystem.backend.service.ChargingService;
+import com.parkingsystem.backend.service.ParkingService;
+import com.parkingsystem.backend.service.ReservationService;
+import com.parkingsystem.backend.service.UserService;
+
+@RestController
+@RequestMapping("/api/parking")
+public class ParkingController {
+
+    private static final Logger logger = LoggerFactory.getLogger(ParkingController.class);
+
+    @Autowired
+    private ParkingService parkingService;
+    
+    @Autowired
+    private UserService userService;
+    
+    @Autowired
+    private ReservationService reservationService;
+    
+    @Autowired
+    private ChargingService chargingService;
+    
+    @Autowired
+    private ChargingRequestRepository chargingRequestRepository;
+    
+    @Autowired
+    private ParkingSpotRepository parkingSpotRepository;
+    
+    @GetMapping("/spots")
+    public ResponseEntity<?> getAllParkingSpots() {
+        try {
+            List<ParkingSpot> spots = parkingService.getAllParkingSpots();
+            List<ParkingSpotDto> spotDtos = spots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(spotDtos);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/spots/{id}")
+    public ResponseEntity<?> getParkingSpot(@PathVariable Long id) {
+        try {
+            ParkingSpot spot = parkingService.getParkingSpotById(id);
+            return ResponseEntity.ok(convertToDto(spot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    
+    private double calculatePayment(User user, ParkingSpot spot, LocalDateTime exitTime) {
+        // Ottieni ora inizio parcheggio
+        LocalDateTime startTime = spot.getOccupiedSince();
+        if (startTime == null) {
+            // Se non disponibile, usa default di 1 ora
+            startTime = exitTime.minusHours(1);
+        }
+        
+        // Calcola durata parcheggio in ore (minimo 1 ora)
+        long minutes = ChronoUnit.MINUTES.between(startTime, exitTime);
+        double hours = Math.max(1.0, Math.ceil(minutes / 60.0));
+        
+        // Applica tariffa oraria
+        double parkingRate = 3.0; // Idealmente da configurazione o servizio
+        double parkingCharge = hours * parkingRate;
+        
+        // Verifica se è stata utilizzata la ricarica
+        double chargingCharge = 0.0;
+        if (spot.isChargingAvailable()) {
+            List<ChargingRequest> completedCharges = chargingRequestRepository
+                .findByUserIdAndParkingSpotIdAndStatus(
+                    user.getId(), 
+                    spot.getId(), 
+                    ChargingRequest.ChargingStatus.COMPLETED);
+            
+            // Somma costi di ricarica
+            double chargingRate = 0.35; // Idealmente da configurazione o servizio
+            for (ChargingRequest charge : completedCharges) {
+                if (charge.getTotalEnergyKwh() != null) {
+                    chargingCharge += charge.getTotalEnergyKwh() * chargingRate;
+                } else {
+                    // Se energia totale non disponibile, calcola dalle percentuali
+                    double batteryCapacity = user.getBatteryCapacityKw() != null ? user.getBatteryCapacityKw() : 40.0;
+                    int percentCharged = charge.getTargetPercentage() - charge.getInitialPercentage();
+                    double kwhCharged = (percentCharged / 100.0) * batteryCapacity;
+                    chargingCharge += kwhCharged * chargingRate;
+                }
+            }
+        }
+        
+        return parkingCharge + chargingCharge;
+    }
+    
+    
+    /**
+     * Gestisce l'ingresso di un'auto nel parcheggio (chiamato dall'iot-service)
+     */
+    @PostMapping("/entrance")
+    public ResponseEntity<?> handleCarEntrance(@RequestBody Map<String, Object> data) {
+        try {
+            String carId = data.get("carId").toString();
+            LocalDateTime timestamp = LocalDateTime.parse(data.get("timestamp").toString());
+            
+            // Cerca utente associato alla targa
+            User user = userService.findByCarLicensePlate(carId);
+            if (user == null) {
+                logger.warn("Car with license plate {} entered but no associated user found", carId);
+                return ResponseEntity.ok(Map.of(
+                    "message", "Car entrance registered, but no associated user found",
+                    "carId", carId
+                ));
+            }
+            
+            // Verifica se l'utente ha una prenotazione attiva
+            List<Reservation> activeReservations = reservationService.getActiveUserReservations(user.getId());
+            Reservation currentReservation = null;
+            
+            if (!activeReservations.isEmpty()) {
+                // Trova la prenotazione corrente (quella con startTime più vicino a now)
+                currentReservation = activeReservations.stream()
+                    .filter(r -> r.getStartTime().isBefore(timestamp.plusMinutes(30))) // Tolleranza di 30 minuti
+                    .min(Comparator.comparing(r -> 
+                        Math.abs(ChronoUnit.MINUTES.between(r.getStartTime(), timestamp))))
+                    .orElse(null);
+                
+                if (currentReservation != null) {
+                    // Aggiorna lo stato della prenotazione
+                    currentReservation.setStatus(Reservation.Status.CONFIRMED);
+                    reservationService.updateReservation(currentReservation);
+                    
+                    // Aggiorna l'occupazione del posto
+                    parkingService.markSpotAsOccupied(currentReservation.getParkingSpot().getId());
+                    
+                    logger.info("Car {} associated with user {} entered for reservation {}", 
+                        carId, user.getUsername(), currentReservation.getId());
+                }
+            }
+            
+            // Se non c'è prenotazione, trova un posto libero
+            if (currentReservation == null) {
+                List<ParkingSpot> availableSpots = parkingService.getParkingSpotRepository()
+                    .findByOccupiedFalseAndReservedFalse();
+                
+                if (availableSpots.isEmpty()) {
+                    logger.warn("No available spots for car {}", carId);
+                    return ResponseEntity.ok(Map.of(
+                        "message", "Car entrance registered, but no available spots",
+                        "carId", carId,
+                        "status", "FULL"
+                    ));
+                }
+                
+                // Prendi il primo posto disponibile e marcalo come occupato
+                ParkingSpot spot = availableSpots.get(0);
+                parkingService.markSpotAsOccupied(spot.getId());
+                
+                logger.info("Car {} associated with user {} entered and assigned to spot {}", 
+                    carId, user.getUsername(), spot.getSpotNumber());
+            }
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "Car entrance registered successfully",
+                "carId", carId,
+                "userId", user.getId(),
+                "timestamp", timestamp.toString()
+            ));
+        } catch (Exception e) {
+            logger.error("Error handling car entrance: " + e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to handle car entrance: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Gestisce l'uscita di un'auto dal parcheggio (chiamato dall'iot-service)
+     */
+    @PostMapping("/exit")
+    public ResponseEntity<?> handleCarExit(@RequestBody Map<String, Object> data) {
+        try {
+            String carId = data.get("carId").toString();
+            LocalDateTime timestamp = LocalDateTime.parse(data.get("timestamp").toString());
+            
+            // Cerca utente associato alla targa
+            User user = userService.findByCarLicensePlate(carId);
+            if (user == null) {
+                logger.warn("Car with license plate {} exited but no associated user found", carId);
+                return ResponseEntity.ok(Map.of(
+                    "message", "Car exit registered, but no associated user found",
+                    "carId", carId
+                ));
+            }
+            
+            // Trova il posto occupato dall'utente
+            List<ParkingSpot> occupiedSpots = parkingService.getParkingSpotRepository().findByOccupiedTrue();
+            ParkingSpot userSpot = null;
+            
+            // Verifica prenotazioni attive
+            List<Reservation> activeReservations = reservationService.getActiveUserReservations(user.getId());
+            if (!activeReservations.isEmpty()) {
+                // Ottieni la prenotazione attiva più recente
+                Reservation activeReservation = activeReservations.stream()
+                    .max(Comparator.comparing(Reservation::getStartTime))
+                    .orElse(null);
+                
+                if (activeReservation != null) {
+                    userSpot = activeReservation.getParkingSpot();
+                    
+                    // Completa la prenotazione
+                    activeReservation.setStatus(Reservation.Status.COMPLETED);
+                    activeReservation.setCompletedAt(timestamp);
+                    reservationService.updateReservation(activeReservation);
+                    
+                    logger.info("Completed reservation {} for user {} on exit", 
+                        activeReservation.getId(), user.getUsername());
+                }
+            }
+            
+            // Se non abbiamo trovato il posto attraverso le prenotazioni
+            if (userSpot == null) {
+                // Cerchiamo di identificare il posto basandoci sulle richieste di ricarica
+                List<ChargingRequest> userChargingRequests = chargingRequestRepository
+                    .findByUserIdAndStatusIn(user.getId(), 
+                        List.of(ChargingRequest.ChargingStatus.COMPLETED, ChargingRequest.ChargingStatus.IN_PROGRESS));
+                
+                if (!userChargingRequests.isEmpty()) {
+                    // Prendi la richiesta di ricarica più recente
+                    ChargingRequest latestRequest = userChargingRequests.stream()
+                        .max(Comparator.comparing(ChargingRequest::getCreatedAt))
+                        .orElse(null);
+                    
+                    if (latestRequest != null) {
+                        userSpot = latestRequest.getParkingSpot();
+                        
+                        // Se la ricarica è ancora in corso, annullala
+                        if (latestRequest.getStatus() == ChargingRequest.ChargingStatus.IN_PROGRESS) {
+                            chargingService.cancelChargingRequest(latestRequest.getId());
+                            logger.info("Cancelled in-progress charging request {} on exit", latestRequest.getId());
+                        }
+                    }
+                }
+            }
+            
+            // Se ancora non abbiamo identificato il posto, prendiamo il primo occupato
+            if (userSpot == null && !occupiedSpots.isEmpty()) {
+                userSpot = occupiedSpots.get(0);
+                logger.warn("Could not identify exact parking spot for exiting car {}, using first occupied spot", carId);
+            }
+            
+            // Libera il posto
+            if (userSpot != null) {
+                parkingService.markSpotAsFree(userSpot.getId());
+                logger.info("Marked spot {} as free on exit of car {}", userSpot.getSpotNumber(), carId);
+                
+                // Calcola il pagamento
+                double paymentAmount = calculatePayment(user, userSpot, timestamp);
+                
+                return ResponseEntity.ok(Map.of(
+                    "message", "Car exit registered successfully",
+                    "carId", carId,
+                    "userId", user.getId(),
+                    "spotId", userSpot.getId(),
+                    "paymentDue", paymentAmount,
+                    "timestamp", timestamp.toString()
+                ));
+            } else {
+                logger.warn("No occupied spot found for exiting car {}", carId);
+                return ResponseEntity.ok(Map.of(
+                    "message", "Car exit registered, but no occupied spot found",
+                    "carId", carId,
+                    "userId", user.getId(),
+                    "timestamp", timestamp.toString()
+                ));
+            }
+        } catch (Exception e) {
+            logger.error("Error handling car exit: " + e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to handle car exit: " + e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/availability")
+    public ResponseEntity<?> findAvailableSpots(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "false") boolean chargingRequired) {
+        try {
+            List<ParkingSpot> availableSpots = parkingService.findAvailableSpots(startTime, endTime, chargingRequired);
+            List<ParkingSpotDto> spotDtos = availableSpots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(spotDtos);
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Errore nel trovare i posti auto disponibili: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Crea un nuovo posto auto (solo ADMIN)
+     */
+    @PostMapping("/spots")
+    public ResponseEntity<?> createParkingSpot(@RequestBody ParkingSpotDto dto) {
+        try {
+            ParkingSpot spot = new ParkingSpot();
+            spot.setSpotNumber(dto.getSpotNumber());
+            spot.setChargingAvailable(dto.isChargingAvailable());
+            spot.setLocation(dto.getLocation());
+            spot.setOccupied(false);
+            spot.setReserved(false);
+            spot.setLastUpdated(LocalDateTime.now());
+            
+            ParkingSpot created = parkingService.createParkingSpot(spot);
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertToDto(created));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Failed to create parking spot: " + e.getMessage()));
+        }
+    }
+    
+ // Ipotetico codice da aggiungere al controller
+    private Long getSpotIdFromCode(String spotCode) {
+        // Mappa da codici alfanumerici a ID numerici
+        Map<String, Long> spotMap = Map.of(
+            "A1", 1L,
+            "A2", 2L,
+            "B1", 3L
+        );
+        return spotMap.getOrDefault(spotCode, Long.valueOf(spotCode));
+    }
+    /**
+     * Aggiorna lo stato di un posto auto (chiamato dall'iot-service)
+     */
+    @PutMapping("/spots/{spotId}/status")
+    public ResponseEntity<?> updateParkingSpotStatus(
+            @PathVariable String spotId,
+            @RequestBody Map<String, Object> data) {
+        try {
+            String status = data.get("status").toString();
+            boolean occupied = status.equalsIgnoreCase("occupied");
+            
+            // Aggiorna lo stato del posto nel database tramite il servizio
+            ParkingSpot updatedSpot;
+            if (occupied) {
+                updatedSpot = parkingService.markSpotAsOccupied(Long.valueOf(spotId));
+            } else {
+                updatedSpot = parkingService.markSpotAsFree(Long.valueOf(spotId));
+            }
+            
+            return ResponseEntity.ok(convertToDto(updatedSpot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    private ParkingSpotDto convertToDto(ParkingSpot parkingSpot) {
+        ParkingSpotDto dto = new ParkingSpotDto();
+        dto.setId(parkingSpot.getId());
+        dto.setSpotNumber(parkingSpot.getSpotNumber());
+        dto.setOccupied(parkingSpot.isOccupied());
+        dto.setReserved(parkingSpot.isReserved());
+        dto.setChargingAvailable(parkingSpot.isChargingAvailable());
+        dto.setLocation(parkingSpot.getLocation());
+        return dto;
+    }
+}

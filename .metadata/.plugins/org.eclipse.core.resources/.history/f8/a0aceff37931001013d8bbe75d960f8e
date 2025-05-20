@@ -1,0 +1,112 @@
+package com.parkingsystem.service;
+
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import com.parkingsystem.config.MqttProperties;
+import com.parkingsystem.mqtt.MqttOutboundGateway;
+
+@Service
+@EnableScheduling
+public class ChargingSimulationService {
+
+    private final MqttOutboundGateway mqttGw;
+    private final MqttProperties props;
+    private final WebClient webClient;
+    private final Random rnd = new Random();
+    // Tiene traccia delle request da simulare
+    private final List<Long> activeRequests = new CopyOnWriteArrayList<>();
+
+    public ChargingSimulationService(
+        MqttOutboundGateway mqttGw,
+        MqttProperties props,
+        @Value("${backend.base-url}") String backendBaseUrl,
+        WebClient.Builder webClientBuilder
+    ) {
+        this.mqttGw    = mqttGw;
+        this.props     = props;
+        // Costruiamo il WebClient puntando al backend
+        this.webClient = webClientBuilder
+            .baseUrl(backendBaseUrl)
+            .build();
+    }
+
+    /**
+     * Invocato dal ServiceActivator all'arrivo di una richiesta MQTT.
+     */
+    public void handleChargingRequest(String payload) {
+        long requestId = extractRequestId(payload);
+
+        // 1) Notifica al backend che la ricarica è partita
+        webClient.post()
+            .uri(uri -> uri.path("/charging-requests/{id}/start").build(requestId))
+            .retrieve()
+            .bodyToMono(Void.class)
+            .block();
+
+        // 2) Pubblica MQTT "started"
+        mqttGw.sendToMqtt(props.getTopics().getStarted(), payload);
+
+        // 3) Registra la request per le simulazioni successive
+        activeRequests.add(requestId);
+    }
+
+    private long extractRequestId(String json) {
+        // Semplice estrazione numerica
+        String digits = json.replaceAll("\\D+", "");
+        return digits.isEmpty() ? 0L : Long.parseLong(digits);
+    }
+
+    /**
+     * Ogni 5s simula un avanzamento per tutte le request attive.
+     */
+    @Scheduled(fixedRate = 5000)
+    public void simulateProgress() {
+        for (Long requestId : activeRequests) {
+            int progress = rnd.nextInt(20) + 1;
+            String msg = String.format(
+                "{\"requestId\": %d, \"currentPercentage\": %d}", 
+                requestId, progress
+            );
+
+            // Notifica backend via REST
+            webClient.post()
+                .uri(uri -> uri.path("/charging-requests/{id}/progress").build(requestId))
+                .retrieve()
+                .bodyToMono(Void.class)
+                .block();
+
+            // Pubblica MQTT “progress”
+            mqttGw.sendToMqtt(props.getTopics().getProgress(), msg);
+        }
+    }
+
+    /**
+     * Ogni 60s simula il completamento di tutte le request attive.
+     */
+    @Scheduled(fixedRate = 60000)
+    public void simulateCompletion() {
+        for (Long requestId : activeRequests) {
+            String msg = String.format("{\"requestId\": %d}", requestId);
+
+            // Notifica backend via REST
+            webClient.post()
+                .uri(uri -> uri.path("/charging-requests/{id}/complete").build(requestId))
+                .retrieve()
+                .bodyToMono(Void.class)
+                .block();
+
+            // Pubblica MQTT “completed”
+            mqttGw.sendToMqtt(props.getTopics().getCompleted(), msg);
+        }
+        // Svuota la lista: tutte le request sono “complete”
+        activeRequests.clear();
+    }
+}

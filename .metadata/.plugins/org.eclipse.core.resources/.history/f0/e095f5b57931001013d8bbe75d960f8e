@@ -1,0 +1,108 @@
+package com.parkingsystem.backend.service;
+;
+
+import java.time.LocalDateTime;
+
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.parkingsystem.backend.config.MqttTopics;
+
+/**
+ * Servizio per pubblicare messaggi MQTT.
+ */
+@Service
+public class MqttPublisherService {
+
+    private static final Logger logger = LoggerFactory.getLogger(MqttPublisherService.class);
+
+    @Autowired
+    private IMqttClient mqttClient;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    /**
+     * Pubblica un comando per iniziare una ricarica
+     */
+    public void publishChargingCommand(String botId, Long chargingRequestId, String parkingSpotId, int targetPercentage) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("botId", botId);
+            node.put("requestId", chargingRequestId);
+            node.put("parkingSpotId", parkingSpotId);
+            node.put("targetPercentage", targetPercentage);
+            node.put("command", "START_CHARGING");
+            node.put("timestamp", LocalDateTime.now().toString());
+            
+            String topic = String.format(MqttTopics.MWBOT_COMMAND, botId);
+            publish(topic, node.toString());
+            
+            logger.info("Published charging command to {}: {}", topic, node.toString());
+        } catch (Exception e) {
+            logger.error("Error publishing charging command: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Pubblica un comando per fermare una ricarica
+     */
+    public void publishStopChargingCommand(String botId, Long chargingRequestId) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("botId", botId);
+            node.put("requestId", chargingRequestId);
+            node.put("command", "STOP_CHARGING");
+            node.put("timestamp", LocalDateTime.now().toString());
+            
+            String topic = String.format(MqttTopics.MWBOT_COMMAND, botId);
+            publish(topic, node.toString());
+            
+            logger.info("Published stop charging command to {}: {}", topic, node.toString());
+        } catch (Exception e) {
+            logger.error("Error publishing stop charging command: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Pubblica una notifica per l'utente
+     */
+    public void publishUserNotification(Long userId, String message, String type) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("userId", userId);
+            node.put("message", message);
+            node.put("type", type);
+            node.put("timestamp", LocalDateTime.now().toString());
+            
+            String topic = String.format(MqttTopics.NOTIFICATION_USER, userId);
+            publish(topic, node.toString());
+            
+            logger.info("Published notification to {}: {}", topic, message);
+        } catch (Exception e) {
+            logger.error("Error publishing notification: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Metodo generico per pubblicare un messaggio MQTT
+     */
+    public void publish(String topic, String payload) {
+        try {
+            if (!mqttClient.isConnected()) {
+                logger.warn("MQTT client not connected. Attempting to reconnect...");
+                mqttClient.reconnect();
+            }
+            
+            MqttMessage message = new MqttMessage(payload.getBytes());
+            message.setQos(1);
+            mqttClient.publish(topic, message);
+        } catch (MqttException e) {
+            logger.error("Failed to publish MQTT message: " + e.getMessage(), e);
+        }
+    }
+}

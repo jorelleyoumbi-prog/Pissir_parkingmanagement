@@ -1,0 +1,23 @@
+server:
+  port: 8081
+
+mqtt:
+  broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+  client-id: ${MQTT_CLIENT_ID:iot-service}
+  topics:
+    request: charging/request
+    started: charging/started
+    progress: charging/progress
+    completed: charging/completed
+
+backend:
+  base-url: ${BACKEND_URL:http://localhost:8081/api/v1}
+
+logging:
+  level:
+    root: INFO
+    com.parkingsystem.iot: DEBUG
+
+spring:
+  main:
+    allow-bean-definition-overriding: true

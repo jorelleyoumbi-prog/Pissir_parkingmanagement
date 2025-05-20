@@ -1,0 +1,107 @@
+package com.parkingsystem.repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import com.parkingsystem.model.Reservation;
+
+/**
+ * Repository for reservations
+ */
+@Repository
+public interface ReservationRepository extends JpaRepository<Reservation, Long> {
+
+    /**
+     * Find reservations by user ID
+     * @param userId The user ID
+     * @return List of reservations
+     */
+    List<Reservation> findByUserId(Long userId);
+    
+    /**
+     * Find reservations by start time between range
+     * @param startTime The start time
+     * @param endTime The end time
+     * @return List of reservations
+     */
+    List<Reservation> findByStartTimeBetween(LocalDateTime startTime, LocalDateTime endTime);
+    
+    /**
+     * Find reservations by user ID and status
+     * @param userId The user ID
+     * @param status The status
+     * @return List of reservations
+     */
+    List<Reservation> findByUserIdAndStatus(Long userId, Reservation.Status status);
+    
+    /**
+     * Find reservations by user ID and status in list
+     * @param userId The user ID
+     * @param statuses The statuses
+     * @return List of reservations
+     */
+    List<Reservation> findByUserIdAndStatusIn(Long userId, List<Reservation.Status> statuses);
+    
+    /**
+     * Find reservations by parking spot ID
+     * @param parkingSpotId The parking spot ID
+     * @return List of reservations
+     */
+    List<Reservation> findByParkingSpotId(Long parkingSpotId);
+    
+    /**
+     * Find reservations by status
+     * @param status The status
+     * @return List of reservations
+     */
+    List<Reservation> findByStatus(Reservation.Status status);
+    
+    /**
+     * Find reservations by status in list
+     * @param statuses The statuses
+     * @return List of reservations
+     */
+    List<Reservation> findByStatusIn(List<Reservation.Status> statuses);
+    
+    /**
+     * Check if there are any reservations for a parking spot
+     * @param parkingSpotId The parking spot ID
+     * @return Whether there are any reservations
+     */
+    boolean existsByParkingSpotId(Long parkingSpotId);
+    
+    /**
+     * Check if there are any reservations for a parking spot with status in list and start time before
+     * @param parkingSpotId The parking spot ID
+     * @param statuses The statuses
+     * @param startTime The start time
+     * @return Whether there are any reservations
+     */
+    boolean existsByParkingSpotIdAndStatusInAndStartTimeBefore(
+            Long parkingSpotId, List<Reservation.Status> statuses, LocalDateTime startTime);
+    
+    @Query("SELECT CASE WHEN COUNT(r) > 0 THEN true ELSE false END FROM Reservation r " +
+    	       "WHERE r.parkingSpot.id = :parkingSpotId " +
+    	       "AND r.status = :status " +
+    	       "AND r.startTime < :endTime " +
+    	       "AND r.endTime > :startTime")
+    	boolean existsOverlappingReservations(@Param("parkingSpotId") Long parkingSpotId,
+    	                                        @Param("status") Reservation.Status status,
+    	                                        @Param("startTime") LocalDateTime startTime,
+    	                                        @Param("endTime") LocalDateTime endTime);
+
+    
+    @Query("SELECT r FROM Reservation r WHERE r.parkingSpot.id = :parkingSpotId AND r.status IN :statuses " +
+    	       "AND (r.startTime <= :endTime AND r.endTime >= :startTime)")
+    	List<Reservation> findOverlappingReservations(
+    	    @Param("parkingSpotId") Long parkingSpotId,
+    	    @Param("startTime") LocalDateTime startTime,
+    	    @Param("endTime") LocalDateTime endTime,
+    	    @Param("statuses") List<Reservation.Status> statuses);
+
+}

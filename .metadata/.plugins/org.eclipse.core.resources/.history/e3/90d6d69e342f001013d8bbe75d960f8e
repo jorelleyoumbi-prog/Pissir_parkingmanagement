@@ -1,0 +1,98 @@
+package com.parkingsystem.repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.boot.autoconfigure.security.SecurityProperties.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import com.parkingsystem.model.ChargingRequest;
+import com.parkingsystem.model.ChargingRequest.ChargingStatus;
+import com.parkingsystem.model.ParkingSpot;
+
+/**
+ * Repository for ChargingRequest entity
+ */
+@Repository
+public interface ChargingRequestRepository extends JpaRepository<ChargingRequest, Long> {
+    
+    // Esistente
+    List<ChargingRequest> findByCreatedAtBetween(LocalDateTime startTime, LocalDateTime endTime);
+    
+    // Esistente
+    List<ChargingRequest> findByUser(User user);
+    
+    List<ChargingRequest> findByUserIdAndParkingSpotIdAndStatus(Long userId, Long parkingSpotId, ChargingRequest.ChargingStatus status);
+    
+    // Esistente
+    List<ChargingRequest> findByParkingSpot(ParkingSpot parkingSpot);
+    
+    // Esistente
+    List<ChargingRequest> findByStatus(ChargingStatus status);
+    
+    // Esistente
+    List<ChargingRequest> findByStatusOrderByCreatedAtAsc(ChargingStatus status);
+    
+    /**
+     * Find active charging requests (PENDING or IN_PROGRESS)
+     * @return List of active charging requests
+     */
+    @Query("SELECT cr FROM ChargingRequest cr WHERE cr.status IN ('PENDING', 'IN_PROGRESS') " +
+           "ORDER BY cr.createdAt ASC")
+    List<ChargingRequest> findActiveChargingRequests();
+    
+    // Esistente
+    @Query("SELECT cr FROM ChargingRequest cr WHERE cr.status = 'COMPLETED' " +
+           "AND cr.notificationRequested = true AND cr.notificationSent = false")
+    List<ChargingRequest> findRequestsNeedingNotification();
+    
+    // Esistente
+    List<ChargingRequest> findByCreatedAtAfter(LocalDateTime startTime);
+    
+    // Esistente
+    long countByStatus(ChargingStatus status);
+    
+    // Esistente
+    boolean existsByParkingSpotId(Long parkingSpotId);
+    
+    /**
+     * Find the position in queue for a specific charging request
+     * @param requestId The ID of the charging request
+     * @return Queue position as an integer
+     */
+    @Query("SELECT COUNT(cr) FROM ChargingRequest cr WHERE cr.status = 'QUEUED' " +
+           "AND cr.createdAt < (SELECT cr2.createdAt FROM ChargingRequest cr2 WHERE cr2.id = :requestId)")
+    Integer findQueuePositionForRequest(@Param("requestId") Long requestId);
+    
+    /**
+     * Find the next request in the charging queue
+     * @return The next charging request in queue or null if queue is empty
+     */
+    @Query("SELECT cr FROM ChargingRequest cr WHERE cr.status = 'QUEUED' " +
+           "ORDER BY cr.createdAt ASC")
+    List<ChargingRequest> findNextInQueue();
+    
+    // Aggiungi il metodo findByStatusIn per filtrare le richieste di ricarica in base a una lista di stati
+    List<ChargingRequest> findByStatusIn(List<ChargingStatus> statuses);
+    
+    // Esistente
+    List<ChargingRequest> findByUserIdOrderByCreatedAtDesc(Long userId);
+    
+    /**
+     * Find charging requests by user ID and status in list
+     * @param userId The user ID
+     * @param statuses The statuses
+     * @return List of charging requests
+     */
+    List<ChargingRequest> findByUserIdAndStatusIn(Long userId, List<ChargingRequest.ChargingStatus> statuses);
+    
+    // Esistente
+    List<ChargingRequest> findByStatusAndNotificationRequestedAndNotificationSent(
+            ChargingRequest.ChargingStatus status, boolean notificationRequested, boolean notificationSent);
+    
+    // Esistente
+    boolean existsByParkingSpotIdAndStatusIn(Long parkingSpotId, List<ChargingRequest.ChargingStatus> statuses);
+}

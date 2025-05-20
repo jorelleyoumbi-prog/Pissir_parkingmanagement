@@ -1,0 +1,5 @@
+package com.parkingsystem.frontend.config;
+
+public class WebClientConfig {
+
+}

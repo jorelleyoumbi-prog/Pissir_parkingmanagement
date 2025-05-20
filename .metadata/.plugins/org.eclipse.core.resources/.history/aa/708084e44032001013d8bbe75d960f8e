@@ -1,0 +1,324 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.parkingsystem.config.MqttTopics;
+import com.parkingsystem.mqtt.MqttOutboundGateway;
+
+@Service
+@EnableScheduling
+public class ChargingSimulationService {
+    
+    private static final Logger logger = LoggerFactory.getLogger(ChargingSimulationService.class);
+
+    private final MqttOutboundGateway mqttGw;
+    private final ObjectMapper objectMapper;
+    private final WebClient webClient;
+    private final Random rnd = new Random();
+    
+    // Tiene traccia delle request da simulare
+    private final List<Long> activeRequests = new CopyOnWriteArrayList<>();
+    
+    // Mappa per tenere traccia dello stato di carica dei MWbot
+    private final Map<String, MWbotState> mwbotStates = new ConcurrentHashMap<>();
+
+    public ChargingSimulationService(
+        MqttOutboundGateway mqttGw,
+        ObjectMapper objectMapper,
+        WebClient.Builder webClientBuilder
+    ) {
+        this.mqttGw = mqttGw;
+        this.objectMapper = objectMapper;
+        // Costruiamo il WebClient puntando al backend
+        this.webClient = webClientBuilder
+            .baseUrl("http://localhost:8080/api")
+            .build();
+    }
+
+    /**
+     * Invocato dal ServiceActivator all'arrivo di una richiesta MQTT.
+     */
+    public void handleChargingRequest(String payload) {
+        try {
+            JsonNode node = objectMapper.readTree(payload);
+            long requestId = node.get("requestId").asLong();
+            
+            logger.info("Handling charging request: {}", requestId);
+            
+            // Pubblica MQTT "started"
+            mqttGw.sendToMqtt(
+                MqttTopics.formatTopic(MqttTopics.CHARGING_PROGRESS, String.valueOf(requestId)), 
+                createChargingProgressMessage(requestId, 0)
+            );
+            
+            // Registra la request per le simulazioni successive
+            activeRequests.add(requestId);
+        } catch (Exception e) {
+            logger.error("Error handling charging request: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Avvia una simulazione di ricarica
+     */
+    public void startCharging(String botId, Long requestId, String parkingSpotId, int targetPercentage) {
+        try {
+            logger.info("Starting charging simulation for bot {} on request {}", botId, requestId);
+            
+            // Crea o aggiorna lo stato del MWbot
+            MWbotState bot = mwbotStates.getOrDefault(botId, new MWbotState(botId));
+            bot.setStatus("BUSY");
+            bot.setCurrentSpotId(parkingSpotId);
+            bot.setCurrentRequestId(requestId);
+            bot.setTargetPercentage(targetPercentage);
+            bot.setCurrentPercentage(0);
+            
+            // Pubblica lo stato del MWbot
+            publishMWbotStatus(bot);
+            
+            // Aggiungi la richiesta alle richieste attive se non è già presente
+            if (!activeRequests.contains(requestId)) {
+                activeRequests.add(requestId);
+            }
+            
+            // Salva lo stato del MWbot
+            mwbotStates.put(botId, bot);
+            
+        } catch (Exception e) {
+            logger.error("Error starting charging: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Ferma una simulazione di ricarica
+     */
+    public void stopCharging(String botId, Long requestId) {
+        try {
+            logger.info("Stopping charging simulation for bot {} on request {}", botId, requestId);
+            
+            // Ottieni lo stato del MWbot
+            MWbotState bot = mwbotStates.get(botId);
+            if (bot != null && bot.getCurrentRequestId() != null && bot.getCurrentRequestId().equals(requestId)) {
+                // Pubblica una notifica di completamento
+                mqttGw.sendToMqtt(
+                    MqttTopics.formatTopic(MqttTopics.CHARGING_COMPLETED, String.valueOf(requestId)), 
+                    createChargingCompletionMessage(requestId, bot.getCurrentPercentage())
+                );
+                
+                // Aggiorna lo stato del MWbot
+                bot.setStatus("AVAILABLE");
+                bot.setCurrentSpotId(null);
+                bot.setCurrentRequestId(null);
+                bot.setTargetPercentage(null);
+                bot.setCurrentPercentage(null);
+                
+                // Pubblica lo stato aggiornato
+                publishMWbotStatus(bot);
+                
+                // Rimuovi la richiesta dalle richieste attive
+                activeRequests.remove(requestId);
+            }
+        } catch (Exception e) {
+            logger.error("Error stopping charging: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Ogni 5s simula un avanzamento per tutte le request attive.
+     */
+    @Scheduled(fixedRate = 5000)
+    public void simulateProgress() {
+        for (Long requestId : activeRequests) {
+            try {
+                // Trova il MWbot associato a questa richiesta
+                MWbotState bot = findMWbotByRequestId(requestId);
+                if (bot == null) continue;
+                
+                // Incrementa la percentuale di carica
+                if (bot.getCurrentPercentage() < bot.getTargetPercentage()) {
+                    int oldPercentage = bot.getCurrentPercentage();
+                    int increment = rnd.nextInt(10) + 5; // Incremento tra 5% e 15%
+                    int newPercentage = Math.min(oldPercentage + increment, bot.getTargetPercentage());
+                    bot.setCurrentPercentage(newPercentage);
+                    
+                    // Pubblica l'avanzamento
+                    String progressMessage = createChargingProgressMessage(requestId, newPercentage);
+                    mqttGw.sendToMqtt(
+                        MqttTopics.formatTopic(MqttTopics.CHARGING_PROGRESS, String.valueOf(requestId)), 
+                        progressMessage
+                    );
+                    
+                    logger.debug("Published charging progress for request {}: {}%", requestId, newPercentage);
+                }
+                
+                // Se abbiamo raggiunto il target, completa la ricarica
+                if (bot.getCurrentPercentage() >= bot.getTargetPercentage()) {
+                    completeCharging(bot);
+                }
+            } catch (Exception e) {
+                logger.error("Error simulating progress for request {}: {}", requestId, e.getMessage(), e);
+            }
+        }
+    }
+    
+    /**
+     * Completa una ricarica
+     */
+    private void completeCharging(MWbotState bot) {
+        try {
+            Long requestId = bot.getCurrentRequestId();
+            logger.info("Completing charging for request {}", requestId);
+            
+            // Pubblica messaggio di completamento
+            String completionMessage = createChargingCompletionMessage(requestId, bot.getTargetPercentage());
+            mqttGw.sendToMqtt(
+                MqttTopics.formatTopic(MqttTopics.CHARGING_COMPLETED, String.valueOf(requestId)), 
+                completionMessage
+            );
+            
+            // Aggiorna lo stato del MWbot
+            bot.setStatus("AVAILABLE");
+            bot.setCurrentSpotId(null);
+            bot.setCurrentRequestId(null);
+            bot.setTargetPercentage(null);
+            bot.setCurrentPercentage(null);
+            
+            // Pubblica lo stato aggiornato
+            publishMWbotStatus(bot);
+            
+            // Rimuovi la richiesta dalle richieste attive
+            activeRequests.remove(requestId);
+        } catch (Exception e) {
+            logger.error("Error completing charging: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Pubblica lo stato di un MWbot
+     */
+    private void publishMWbotStatus(MWbotState bot) {
+        try {
+            ObjectNode status = objectMapper.createObjectNode();
+            status.put("botId", bot.getBotId());
+            status.put("status", bot.getStatus());
+            status.put("batteryLevel", bot.getBatteryLevel());
+            
+            if (bot.getCurrentSpotId() != null) {
+                status.put("currentLocation", bot.getCurrentSpotId());
+            }
+            
+            if (bot.getCurrentRequestId() != null) {
+                status.put("requestId", bot.getCurrentRequestId());
+                status.put("currentPercentage", bot.getCurrentPercentage());
+                status.put("targetPercentage", bot.getTargetPercentage());
+            }
+            
+            status.put("timestamp", LocalDateTime.now().toString());
+            
+            String topic = MqttTopics.formatTopic(MqttTopics.MWBOT_STATUS, bot.getBotId());
+            mqttGw.sendToMqtt(topic, status.toString());
+            
+            logger.debug("Published MWbot status: {}", status.toString());
+        } catch (Exception e) {
+            logger.error("Error publishing MWbot status: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Trova un MWbot per ID di richiesta
+     */
+    private MWbotState findMWbotByRequestId(Long requestId) {
+        for (MWbotState bot : mwbotStates.values()) {
+            if (requestId.equals(bot.getCurrentRequestId())) {
+                return bot;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Crea un messaggio di avanzamento della ricarica
+     */
+    private String createChargingProgressMessage(Long requestId, int percentage) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("requestId", requestId);
+            node.put("currentPercentage", percentage);
+            node.put("timestamp", LocalDateTime.now().toString());
+            return node.toString();
+        } catch (Exception e) {
+            logger.error("Error creating charging progress message: " + e.getMessage(), e);
+            return "{}";
+        }
+    }
+    
+    /**
+     * Crea un messaggio di completamento della ricarica
+     */
+    private String createChargingCompletionMessage(Long requestId, int finalPercentage) {
+        try {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("requestId", requestId);
+            node.put("status", "COMPLETED");
+            node.put("finalPercentage", finalPercentage);
+            node.put("timestamp", LocalDateTime.now().toString());
+            return node.toString();
+        } catch (Exception e) {
+            logger.error("Error creating charging completion message: " + e.getMessage(), e);
+            return "{}";
+        }
+    }
+    
+    /**
+     * Classe interna per tracciare lo stato dei MWbot
+     */
+    private static class MWbotState {
+        private final String botId;
+        private String status = "AVAILABLE";
+        private int batteryLevel = 100;
+        private String currentSpotId;
+        private Long currentRequestId;
+        private Integer currentPercentage;
+        private Integer targetPercentage;
+        
+        public MWbotState(String botId) {
+            this.botId = botId;
+        }
+        
+        // Getters e setters
+        public String getBotId() { return botId; }
+        
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        
+        public int getBatteryLevel() { return batteryLevel; }
+        public void setBatteryLevel(int batteryLevel) { this.batteryLevel = batteryLevel; }
+        
+        public String getCurrentSpotId() { return currentSpotId; }
+        public void setCurrentSpotId(String currentSpotId) { this.currentSpotId = currentSpotId; }
+        
+        public Long getCurrentRequestId() { return currentRequestId; }
+        public void setCurrentRequestId(Long currentRequestId) { this.currentRequestId = currentRequestId; }
+        
+        public Integer getCurrentPercentage() { return currentPercentage; }
+        public void setCurrentPercentage(Integer currentPercentage) { this.currentPercentage = currentPercentage; }
+        
+        public Integer getTargetPercentage() { return targetPercentage; }
+        public void setTargetPercentage(Integer targetPercentage) { this.targetPercentage = targetPercentage; }
+    }
+}

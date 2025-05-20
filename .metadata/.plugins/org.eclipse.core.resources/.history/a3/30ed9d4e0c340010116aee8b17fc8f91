@@ -1,0 +1,108 @@
+package com.parkingsystem.frontend.controller;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import com.parkingsystem.frontend.dto.UserSession;
+import com.parkingsystem.frontend.service.BackendService;
+
+import jakarta.servlet.http.HttpSession;
+
+@Controller
+public class AuthController {
+
+    @Autowired
+    private BackendService backendService;
+
+    @GetMapping("/")
+    public String home() {
+        return "redirect:/dashboard";
+    }
+
+    @GetMapping("/login")
+    public String loginForm() {
+        return "auth/login";
+    }
+
+    @PostMapping("/login")
+    public String login(@RequestParam String username, 
+                       @RequestParam String password,
+                       HttpSession session,
+                       RedirectAttributes redirectAttributes) {
+        
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("username", username);
+        requestBody.put("password", password);
+        
+        try {
+            Map<String, Object> response = backendService.post("/auth/login", requestBody, Map.class)
+                    .block();
+            
+            if (response != null && response.containsKey("token")) {
+                UserSession userSession = new UserSession();
+                userSession.setId(Long.valueOf(response.get("id").toString()));
+                userSession.setUsername(response.get("username").toString());
+                userSession.setRole(response.get("role").toString());
+                userSession.setToken(response.get("token").toString());
+                userSession.setAuthenticated(true);
+                
+                if (response.containsKey("email")) {
+                    userSession.setEmail(response.get("email").toString());
+                }
+                
+                if (response.containsKey("fullName")) {
+                    userSession.setFullName(response.get("fullName").toString());
+                }
+                
+                session.setAttribute("userSession", userSession);
+                
+                return "redirect:/dashboard";
+            } else {
+                redirectAttributes.addFlashAttribute("error", "Login fallito: risposta non valida dal server");
+                return "redirect:/login";
+            }
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Login fallito: " + e.getMessage());
+            return "redirect:/login";
+        }
+    }
+
+    @GetMapping("/register")
+    public String registerForm() {
+        return "auth/register";
+    }
+
+    @PostMapping("/register")
+    public String register(@RequestParam Map<String, String> formData,
+                          RedirectAttributes redirectAttributes) {
+        
+        try {
+            Map<String, Object> response = backendService.post("/auth/register", formData, Map.class)
+                    .block();
+            
+            if (response != null && response.containsKey("id")) {
+                redirectAttributes.addFlashAttribute("success", "Registrazione completata con successo. Effettua il login.");
+                return "redirect:/login";
+            } else {
+                redirectAttributes.addFlashAttribute("error", "Registrazione fallita: risposta non valida dal server");
+                return "redirect:/register";
+            }
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Registrazione fallita: " + e.getMessage());
+            return "redirect:/register";
+        }
+    }
+
+    @GetMapping("/logout")
+    public String logout(HttpSession session) {
+        session.invalidate();
+        return "redirect:/login";
+    }
+}

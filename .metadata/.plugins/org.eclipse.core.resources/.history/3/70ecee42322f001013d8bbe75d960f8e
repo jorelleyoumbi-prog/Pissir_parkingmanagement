@@ -1,0 +1,5 @@
+package com.parkingsystem.config;
+
+public class MqttProperties {
+
+}

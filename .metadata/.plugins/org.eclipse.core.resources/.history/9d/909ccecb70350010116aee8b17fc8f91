@@ -1,0 +1,27 @@
+package com.parkingsystem.backend;
+
+import java.awt.Desktop;
+import java.net.URI;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import jakarta.annotation.PostConstruct;
+
+@SpringBootApplication
+public class BackendServiceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(BackendServiceApplication.class, args);
+	}
+	
+	@PostConstruct
+	public void openBrowser() {
+	    try {
+	        Desktop.getDesktop().browse(new URI("http://localhost:8082/login"));
+	    } catch (Exception e) {
+	        System.err.println("Impossibile aprire il browser: " + e.getMessage());
+	    }
+
+}
+}

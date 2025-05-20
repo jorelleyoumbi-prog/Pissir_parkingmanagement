@@ -1,0 +1,24 @@
+package com.parkingsystem.frontend;
+
+import java.awt.Desktop;
+import java.net.URI;
+
+import java.awt.Desktop;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class FrontendServiceApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(FrontendServiceApplication.class, args);
+
+        try {
+            Desktop.getDesktop().browse(new URI("http://localhost:8080"));
+        } catch (Exception e) {
+            System.out.println("Impossibile aprire il browser: " + e.getMessage());
+        }
+    }
+
+}

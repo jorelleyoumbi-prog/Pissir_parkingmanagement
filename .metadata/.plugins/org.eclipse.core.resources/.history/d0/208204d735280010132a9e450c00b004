@@ -1,0 +1,214 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.model.Reservation;
+import com.parkingsystem.backend.model.User;
+import com.parkingsystem.backend.repository.ParkingSpotRepository;
+import com.parkingsystem.backend.repository.ReservationRepository;
+import com.parkingsystem.backend.repository.UserRepository;
+
+/**
+ * Service for reservation operations
+ */
+@Service
+public class ReservationService {
+
+    @Autowired
+    private ReservationRepository reservationRepository;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private ParkingSpotRepository parkingSpotRepository;
+    
+    @Autowired
+    private NotificationService notificationService;
+    
+    /**
+     * Get all reservations
+     * @return List of all reservations
+     */
+    public List<Reservation> getAllReservations() {
+        return reservationRepository.findAll();
+    }
+    
+    /**
+     * Get active reservations
+     * @return List of active reservations
+     */
+    public List<Reservation> getActiveReservations() {
+        return reservationRepository.findByStatusIn(List.of(Reservation.Status.PENDING, Reservation.Status.CONFIRMED));
+    }
+    
+    /**
+     * Get reservations for a user
+     * @param userId The user ID
+     * @return List of reservations for the user
+     */
+    public List<Reservation> getUserReservations(Long userId) {
+        return reservationRepository.findByUserId(userId);
+    }
+    
+    /**
+     * Get active reservations for a user
+     * @param userId The user ID
+     * @return List of active reservations for the user
+     */
+    public List<Reservation> getActiveUserReservations(Long userId) {
+        return reservationRepository.findByUserIdAndStatusIn(userId, 
+                List.of(Reservation.Status.PENDING, Reservation.Status.CONFIRMED));
+    }
+    
+    /**
+     * Get reservations for a parking spot
+     * @param parkingSpotId The parking spot ID
+     * @return List of reservations for the parking spot
+     */
+    public List<Reservation> getParkingSpotReservations(Long parkingSpotId) {
+        return reservationRepository.findByParkingSpotId(parkingSpotId);
+    }
+    
+    /**
+     * Get reservation by ID
+     * @param id The reservation ID
+     * @return The reservation
+     */
+    public Reservation getReservationById(Long id) {
+        return reservationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found with id: " + id));
+    }
+    
+    /**
+     * Create a new reservation
+     * @param userId The user ID
+     * @param parkingSpotId The parking spot ID
+     * @param startTime The start time
+     * @param endTime The end time
+     * @param chargingRequired Whether charging is required
+     * @return The created reservation
+     */
+    @Transactional
+    public Reservation createReservation(Long userId, Long parkingSpotId, 
+            LocalDateTime startTime, LocalDateTime endTime, boolean chargingRequired) {
+        
+        // Validate time range
+        if (startTime.isAfter(endTime)) {
+            throw new BadRequestException("Start time must be before end time");
+        }
+        
+        if (startTime.isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Start time must be in the future");
+        }
+        
+        // Get user
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+        
+        // Get parking spot
+        ParkingSpot parkingSpot = parkingSpotRepository.findById(parkingSpotId)
+                .orElseThrow(() -> new ResourceNotFoundException("Parking spot not found with id: " + parkingSpotId));
+        
+        // Check if charging is available if required
+        if (chargingRequired && !parkingSpot.isChargingAvailable()) {
+            throw new BadRequestException("Selected parking spot does not have charging capability");
+        }
+        
+        // Check if the parking spot is available for the requested time range
+        if (!isParkingSpotAvailable(parkingSpotId, startTime, endTime)) {
+            throw new BadRequestException("Parking spot is not available for the requested time range");
+        }
+        
+        // Create the reservation
+        Reservation reservation = new Reservation();
+        reservation.setUser(user);
+        reservation.setParkingSpot(parkingSpot);
+        reservation.setStartTime(startTime);
+        reservation.setEndTime(endTime);
+        reservation.setChargingRequired(chargingRequired);
+        reservation.setStatus(Reservation.Status.CONFIRMED);
+        reservation.setCreatedAt(LocalDateTime.now());
+        
+        // Save the reservation
+        Reservation savedReservation = reservationRepository.save(reservation);
+        
+        // Mark the parking spot as reserved
+        parkingSpot.setReserved(true);
+        parkingSpotRepository.save(parkingSpot);
+        
+        // Send notification
+        notificationService.sendReservationConfirmationNotification(savedReservation);
+        
+        return savedReservation;
+    }
+    
+    /**
+     * Cancel a reservation
+     * @param id The reservation ID
+     */
+    @Transactional
+    public void cancelReservation(Long id) {
+        Reservation reservation = getReservationById(id);
+        
+        // Check if the reservation is already cancelled
+        if (reservation.getStatus() == Reservation.Status.CANCELLED) {
+            throw new BadRequestException("Reservation is already cancelled");
+        }
+        
+        // Check if the reservation is in the past
+        if (reservation.getStartTime().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Cannot cancel a reservation that has already started");
+        }
+        
+        // Update the reservation status
+        reservation.setStatus(Reservation.Status.CANCELLED);
+        reservation.setCancelledAt(LocalDateTime.now());
+        
+        // Save the reservation
+        reservationRepository.save(reservation);
+        
+        // If the reservation was for the current or upcoming time, update parking spot availability
+        if (reservation.getStartTime().isEqual(LocalDateTime.now()) || 
+                reservation.getStartTime().isAfter(LocalDateTime.now())) {
+            
+            ParkingSpot parkingSpot = reservation.getParkingSpot();
+            
+            // Check if there are any other active reservations for the parking spot
+            boolean hasOtherReservations = reservationRepository.existsByParkingSpotIdAndStatusInAndStartTimeBefore(
+                    parkingSpot.getId(), 
+                    List.of(Reservation.Status.CONFIRMED), 
+                    LocalDateTime.now().plusHours(1)); // Check for reservations in the next hour
+            
+            if (!hasOtherReservations) {
+                parkingSpot.setReserved(false);
+                parkingSpotRepository.save(parkingSpot);
+            }
+        }
+    }
+    
+    /**
+     * Check if a parking spot is available for a time range
+     * @param parkingSpotId The parking spot ID
+     * @param startTime The start time
+     * @param endTime The end time
+     * @return Whether the parking spot is available
+     */
+    public boolean isParkingSpotAvailable(Long parkingSpotId, LocalDateTime startTime, LocalDateTime endTime) {
+        // Check if there are any overlapping reservations
+        List<Reservation> overlappingReservations = reservationRepository
+                .findOverlappingReservations(parkingSpotId, startTime, endTime, List.of(Reservation.Status.CONFIRMED));
+        
+        return overlappingReservations.isEmpty();
+    }
+    
+    
+}

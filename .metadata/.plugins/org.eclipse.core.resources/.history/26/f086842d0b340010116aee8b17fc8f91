@@ -1,0 +1,55 @@
+package com.parkingsystem.frontend.controller;
+
+import com.parkingsystem.frontend.dto.UserSession;
+import com.parkingsystem.frontend.service.AdminDashboardService;
+import com.parkingsystem.frontend.service.BackendService;
+import jakarta.servlet.http.HttpSession;
+import lombok.AllArgsConstructor;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+@AllArgsConstructor
+public class DashboardController {
+
+    private final BackendService backendService;
+    private final AdminDashboardService adminDashboardService;
+
+    @GetMapping("/dashboard")
+    public String dashboard(HttpSession session, Model model) {
+        UserSession userSession = (UserSession) session.getAttribute("userSession");
+
+        if (userSession == null || !Boolean.TRUE.equals(userSession.isAuthenticated())) {
+            return "redirect:/login";
+        }
+
+        model.addAttribute("user", userSession);
+
+        if ("ADMIN".equals(userSession.getRole())) {
+            return adminDashboardService.loadAdminDashboard(model, userSession);
+        }
+
+        return loadUserDashboard(model, userSession);
+    }
+
+    private String loadUserDashboard(Model model, UserSession userSession) {
+        try {
+            var payments = backendService.get("/payments/user", Object[].class, userSession.getToken()).block();
+            model.addAttribute("payments", payments);
+
+            if ("PREMIUM".equals(userSession.getRole())) {
+                var reservations = backendService.get("/premium/reservations", Object[].class, userSession.getToken()).block();
+                model.addAttribute("reservations", reservations);
+            }
+
+            var chargingRequests = backendService.get("/charging/user", Object[].class, userSession.getToken()).block();
+            model.addAttribute("chargingRequests", chargingRequests);
+
+        } catch (Exception e) {
+            model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+        }
+
+        return "dashboard";
+    }
+}

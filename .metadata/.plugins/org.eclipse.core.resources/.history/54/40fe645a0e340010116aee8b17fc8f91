@@ -1,0 +1,38 @@
+package com.parkingsystem.frontend.service;
+
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.ui.Model;
+
+import com.parkingsystem.frontend.dto.UserSession;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class AdminDashboardService {
+
+    private final BackendService backendService;
+
+    public String loadAdminDashboard(Model model, UserSession userSession) {
+        try {
+            Map<String, Object> dashboardData = backendService
+                    .get("/admin/dashboard", Map.class, userSession.getToken())
+                    .block();
+
+            model.addAttribute("dashboardData", dashboardData);
+        } catch (Exception e) {
+            model.addAttribute("error", "Errore nel caricamento dei dati: " + e.getMessage());
+        }
+
+        return "admin/dashboard";
+    }
+    
+    @Autowired
+    public AdminDashboardService(BackendService backendService) {
+        this.backendService = backendService;
+    }
+
+}

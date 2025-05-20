@@ -1,0 +1,14 @@
+package com.parkingsystem.backend.publisher;
+
+import org.springframework.stereotype.Component;
+import java.util.Map;
+
+@Component
+public class MqttNotificationPublisher implements NotificationPublisher {
+
+    @Override
+    public void publish(String topic, Map<String, Object> payload) {
+        // Inserisci qui la logica reale per pubblicare su MQTT
+        System.out.println("Publishing to MQTT topic: " + topic + " with payload: " + payload);
+    }
+}

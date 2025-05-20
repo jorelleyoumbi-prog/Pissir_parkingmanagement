@@ -1,0 +1,282 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.backend.dto.ReportDto;
+import com.parkingsystem.backend.model.ChargingRequest;
+import com.parkingsystem.backend.model.MWbot;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.model.Payment;
+import com.parkingsystem.backend.model.Reservation;
+import com.parkingsystem.repository.ChargingRequestRepository;
+import com.parkingsystem.repository.MWbotRepository;
+import com.parkingsystem.repository.ParkingSpotRepository;
+import com.parkingsystem.repository.PaymentRepository;
+import com.parkingsystem.repository.ReservationRepository;
+
+/**
+ * Service for generating reports
+ */
+@Service
+public class ReportService {
+
+    @Autowired
+    private PaymentRepository paymentRepository;
+    
+    @Autowired
+    private ReservationRepository reservationRepository;
+    
+    @Autowired
+    private ChargingRequestRepository chargingRequestRepository;
+    
+    @Autowired
+    private ParkingSpotRepository parkingSpotRepository;
+    
+    @Autowired
+    private MWbotRepository mwbotRepository;
+    
+    private final DateTimeFormatter dateFormatter = DateTimeFormatter.ISO_DATE;
+    
+    /**
+     * Generate revenue report
+     * @param startDateTime Start date time
+     * @param endDateTime End date time
+     * @return Revenue report
+     */
+    public ReportDto generateRevenueReport(LocalDateTime startDateTime, LocalDateTime endDateTime) {
+        List<Payment> payments = paymentRepository.findByPaymentDateBetween(startDateTime, endDateTime);
+        
+        double totalRevenue = payments.stream().mapToDouble(Payment::getAmount).sum();
+        
+        // Group by payment type
+        Map<String, Double> revenueByType = new HashMap<>();
+        for (Payment payment : payments) {
+            String type = payment.getType().toString();
+            revenueByType.put(type, revenueByType.getOrDefault(type, 0.0) + payment.getAmount());
+        }
+        
+        // Group by day
+        Map<String, Double> revenueByDay = new HashMap<>();
+        for (Payment payment : payments) {
+            String day = payment.getPaymentDate().format(dateFormatter);
+            revenueByDay.put(day, revenueByDay.getOrDefault(day, 0.0) + payment.getAmount());
+        }
+        
+        // Create report
+        ReportDto report = new ReportDto();
+        report.setReportType("REVENUE");
+        report.setStartDate(startDateTime.format(dateFormatter));
+        report.setEndDate(endDateTime.format(dateFormatter));
+        
+        // Summary
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalRevenue", totalRevenue);
+        summary.put("numberOfPayments", payments.size());
+        summary.put("revenueByType", revenueByType);
+        
+        report.setSummary(summary);
+        
+        // Details
+        List<Map<String, Object>> details = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : revenueByDay.entrySet()) {
+            Map<String, Object> dayRevenue = new HashMap<>();
+            dayRevenue.put("date", entry.getKey());
+            dayRevenue.put("revenue", entry.getValue());
+            details.add(dayRevenue);
+        }
+        
+        report.setDetails(details);
+        
+        return report;
+    }
+    
+    /**
+     * Generate occupancy report
+     * @param startDateTime Start date time
+     * @param endDateTime End date time
+     * @return Occupancy report
+     */
+    /**
+     * Generate occupancy report
+     * @param startDateTime Start date time
+     * @param endDateTime End date time
+     * @return Occupancy report
+     */
+    public ReportDto generateOccupancyReport(LocalDateTime startDateTime, LocalDateTime endDateTime) {
+        List<Reservation> reservations = reservationRepository.findByStartTimeBetween(startDateTime, endDateTime);
+        
+        long totalReservations = reservations.size();
+        long completedReservations = reservations.stream()
+                .filter(r -> r.getStatus() == Reservation.Status.COMPLETED)
+                .count();
+        long cancelledReservations = reservations.stream()
+                .filter(r -> r.getStatus() == Reservation.Status.CANCELLED)
+                .count();
+        
+        
+        // Group by day
+        Map<String, Long> reservationsByDay = new HashMap<>();
+        for (Reservation reservation : reservations) {
+            String day = reservation.getStartTime().format(dateFormatter);
+            reservationsByDay.put(day, reservationsByDay.getOrDefault(day, 0L) + 1);
+        }
+        
+        // Current occupancy
+        List<ParkingSpot> allSpots = parkingSpotRepository.findAll();
+        long totalSpots = allSpots.size();
+        long occupiedSpots = allSpots.stream().filter(ParkingSpot::isOccupied).count();
+        double occupancyRate = totalSpots > 0 ? (double) occupiedSpots / totalSpots * 100 : 0;
+        
+        // Create report
+        ReportDto report = new ReportDto();
+        report.setReportType("OCCUPANCY");
+        report.setStartDate(startDateTime.format(dateFormatter));
+        report.setEndDate(endDateTime.format(dateFormatter));
+        
+        // Summary
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalReservations", totalReservations);
+        summary.put("completedReservations", completedReservations);
+        summary.put("cancelledReservations", cancelledReservations);
+        summary.put("currentOccupancy", String.format("%.2f%%", occupancyRate));
+        summary.put("occupiedSpots", occupiedSpots);
+        summary.put("totalSpots", totalSpots);
+        
+        report.setSummary(summary);
+        
+        // Details
+        List<Map<String, Object>> details = new ArrayList<>();
+        for (Map.Entry<String, Long> entry : reservationsByDay.entrySet()) {
+            Map<String, Object> dayReservations = new HashMap<>();
+            dayReservations.put("date", entry.getKey());
+            dayReservations.put("reservations", entry.getValue());
+            details.add(dayReservations);
+        }
+        
+        report.setDetails(details);
+        
+        return report;
+    }
+    
+    /**
+     * Generate charging report
+     * @param startDateTime Start date time
+     * @param endDateTime End date time
+     * @return Charging report
+     */
+    public ReportDto generateChargingReport(LocalDateTime startDateTime, LocalDateTime endDateTime) {
+        List<ChargingRequest> chargingRequests = chargingRequestRepository.findByCreatedAtBetween(startDateTime, endDateTime);
+        
+        long totalRequests = chargingRequests.size();
+        long completedRequests = chargingRequests.stream()
+                .filter(r -> r.getStatus() == ChargingRequest.ChargingStatus.COMPLETED)
+                .count();
+        double totalEnergyKwh = chargingRequests.stream()
+                .filter(r -> r.getTotalEnergyKwh() != null)
+                .mapToDouble(ChargingRequest::getTotalEnergyKwh)
+                .sum();
+        
+        // Group by day
+        Map<String, Long> requestsByDay = new HashMap<>();
+        for (ChargingRequest request : chargingRequests) {
+            String day = request.getCreatedAt().format(dateFormatter);
+            requestsByDay.put(day, requestsByDay.getOrDefault(day, 0L) + 1);
+        }
+        
+        // Create report
+        ReportDto report = new ReportDto();
+        report.setReportType("CHARGING");
+        report.setStartDate(startDateTime.format(dateFormatter));
+        report.setEndDate(endDateTime.format(dateFormatter));
+        
+        // Summary
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalChargingRequests", totalRequests);
+        summary.put("completedChargingRequests", completedRequests);
+        summary.put("totalEnergyKwh", totalEnergyKwh);
+        summary.put("averageEnergyPerRequest", totalRequests > 0 ? totalEnergyKwh / completedRequests : 0);
+        
+        report.setSummary(summary);
+        
+        // Details
+        List<Map<String, Object>> details = new ArrayList<>();
+        for (Map.Entry<String, Long> entry : requestsByDay.entrySet()) {
+            Map<String, Object> dayRequests = new HashMap<>();
+            dayRequests.put("date", entry.getKey());
+            dayRequests.put("requests", entry.getValue());
+            details.add(dayRequests);
+        }
+        
+        report.setDetails(details);
+        
+        return report;
+    }
+    
+    /**
+     * Generate MWbot report
+     * @param startDateTime Start date time
+     * @param endDateTime End date time
+     * @return MWbot report
+     */
+    public ReportDto generateMWbotReport(LocalDateTime startDateTime, LocalDateTime endDateTime) {
+        List<MWbot> mwbots = mwbotRepository.findAll();
+        
+        long totalBots = mwbots.size();
+        long availableBots = mwbots.stream()
+                .filter(bot -> bot.getStatus() == MWbot.BotStatus.AVAILABLE)
+                .count();
+        long busyBots = mwbots.stream()
+                .filter(bot -> bot.getStatus() == MWbot.BotStatus.BUSY)
+                .count();
+        long maintenanceBots = mwbots.stream()
+                .filter(MWbot::isMaintenanceRequired)
+                .count();
+        
+        // Group by status
+        Map<String, Long> botsByStatus = new HashMap<>();
+        for (MWbot bot : mwbots) {
+            String status = bot.getStatus().toString();
+            botsByStatus.put(status, botsByStatus.getOrDefault(status, 0L) + 1);
+        }
+        
+        // Create report
+        ReportDto report = new ReportDto();
+        report.setReportType("MWBOT");
+        report.setStartDate(startDateTime.format(dateFormatter));
+        report.setEndDate(endDateTime.format(dateFormatter));
+        
+        // Summary
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("totalBots", totalBots);
+        summary.put("availableBots", availableBots);
+        summary.put("busyBots", busyBots);
+        summary.put("maintenanceBots", maintenanceBots);
+        summary.put("utilization", totalBots > 0 ? (double) busyBots / totalBots * 100 : 0);
+        
+        report.setSummary(summary);
+        
+        // Details
+        List<Map<String, Object>> details = new ArrayList<>();
+        for (MWbot bot : mwbots) {
+            Map<String, Object> botDetails = new HashMap<>();
+            botDetails.put("id", bot.getId());
+            botDetails.put("botId", bot.getBotId());
+            botDetails.put("status", bot.getStatus().toString());
+            botDetails.put("batteryLevel", bot.getBatteryLevel());
+            botDetails.put("maintenanceRequired", bot.isMaintenanceRequired());
+            details.add(botDetails);
+        }
+        
+        report.setDetails(details);
+        
+        return report;
+    }
+}

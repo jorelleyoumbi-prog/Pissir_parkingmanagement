@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stato Ricarica - Smart Parking System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <meta http-equiv="refresh" content="30"> <!-- Auto-refresh ogni 30 secondi -->
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">Smart Parking System</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" th:href="@{/dashboard}">Dashboard</a>
+                    </li>
+                    <li class="nav-item" th:if="${user.premium}">
+                        <a class="nav-link" th:href="@{/booking}">Prenota</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" th:href="@{/charging}">Ricarica</a>
+                    </li>
+                </ul>
+                <div class="navbar-text text-white me-3">
+                    Benvenuto, <span th:text="${user.fullName}">Utente</span>
+                </div>
+                <a class="btn btn-outline-light" th:href="@{/logout}">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="alert alert-danger" th:if="${error}" th:text="${error}"></div>
+        
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Dettaglio Ricarica</h1>
+            <a th:href="@{/charging}" class="btn btn-secondary">Torna alle ricariche</a>
+        </div>
+        
+        <div class="row" th:if="${charging != null}">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between">
+                        <h5>Richiesta #<span th:text="${charging.id}"></span></h5>
+                        <span th:class="${charging.status == 'IN_PROGRESS' ? 'badge bg-success' : (charging.status == 'COMPLETED' ? 'badge bg-info' : 'badge bg-warning')}"
+                              th:text="${charging.status}"></span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Posto:</strong> <span th:text="${charging.spotNumber}"></span></p>
+                                <p><strong>Percentuale iniziale:</strong> <span th:text="${charging.initialPercentage} + '%'"></span></p>
+                                <p><strong>Percentuale target:</strong> <span th:text="${charging.targetPercentage} + '%'"></span></p>
+                                <p><strong>Percentuale attuale:</strong> <span th:text="${charging.currentPercentage} + '%'"></span></p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Creata il:</strong> <span th:text="${charging.createdAt}"></span></p>
+                                <p th:if="${charging.chargingStartTime != null}"><strong>Inizio ricarica:</strong> <span th:text="${charging.chargingStartTime}"></span></p>
+                                <p th:if="${charging.estimatedCompletionTime != null}"><strong>Completamento stimato:</strong> <span th:text="${charging.estimatedCompletionTime}"></span></p>
+                                <p th:if="${charging.chargingCompletionTime != null}"><strong>Completamento effettivo:</strong> <span th:text="${charging.chargingCompletionTime}"></span></p>
+                            </div>
+                        </div>
+                        
+                        <div th:if="${charging.status == 'IN_PROGRESS'}" class="mt-4">
+                            <h6>Progresso ricarica:</h6>
+                            <div class="progress" style="height: 30px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                                     th:style="'width: ' + ${(charging.currentPercentage - charging.initialPercentage) * 100 / (charging.targetPercentage - charging.initialPercentage)} + '%'"
+                                     th:aria-valuenow="${charging.currentPercentage}"
+                                     aria-valuemin="${charging.initialPercentage}" aria-valuemax="${charging.targetPercentage}">
+                                    <span th:text="${charging.currentPercentage} + '%'"></span>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between mt-1">
+                                <small th:text="${charging.initialPercentage} + '%'"></small>
+                                <small th:text="${charging.targetPercentage} + '%'"></small>
+                            </div>
+                        </div>
+                        
+                        <div th:if="${charging.status == 'COMPLETED'}" class="alert alert-success mt-4">
+                            <h6 class="alert-heading">Ricarica completata!</h6>
+                            <p>La tua auto è stata ricaricata con successo fino al <span th:text="${charging.targetPercentage}"></span>%</p>
+                            
+                            <div th:if="${charging.totalEnergyKwh != null}" class="mt-3">
+                                <p>Energia totale caricata: <strong th:text="${charging.totalEnergyKwh} + ' kWh'"></strong></p>
+                                <p>Costo stimato: <strong th:text="${#numbers.formatDecimal(charging.totalEnergyKwh * 0.35, 1, 2)} + ' €'"></strong></p>
+                            </div>
+                            
+                            <div th:if="${charging.targetPercentage < 100}" class="mt-3">
+                                <form th:action="@{'/charging/' + ${charging.id} + '/additional'}" method="post">
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" name="targetPercentage" 
+                                               th:min="${charging.targetPercentage + 1}" max="100" th:value="${charging.targetPercentage + 10}">
+                                        <span class="input-group-text">%</span>
+                                        <button class="btn btn-outline-success" type="submit">Richiedi ulteriore ricarica</button>
+                                    </div>
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" id="additionalNotification" name="notificationRequested" checked>
+                                        <label class="form-check-label" for="additionalNotification">
+                                            Ricevi notifica al completamento
+                                        </label>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div th:if="${charging.status == 'QUEUED'}" class="alert alert-warning mt-4">
+                            <h6 class="alert-heading">In attesa di un MWbot disponibile</h6>
+                            <p>Posizione in coda: <strong th:text="${charging.queuePosition}"></strong></p>
+                            <p th:if="${charging.estimatedStartTime != null}">Inizio stimato: <strong th:text="${charging.estimatedStartTime}"></strong></p>
+                            
+                            <form th:action="@{'/charging/' + ${charging.id} + '/cancel'}" method="post" class="mt-3">
+                                <button type="submit" class="btn btn-sm btn-danger">Annulla richiesta</button>
+                            </form>
+                        </div>
+                        
+                        <div th:if="${charging.status == 'PENDING'}" class="alert alert-info mt-4">
+                            <h6 class="alert-heading">Richiesta in elaborazione</h6>
+                            <p>La tua richiesta è stata ricevuta e sarà elaborata a breve.</p>
+                            
+                            <form th:action="@{'/charging/' + ${charging.id} + '/cancel'}" method="post" class="mt-3">
+                                <button type="submit" class="btn btn-sm btn-danger">Annulla richiesta</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Informazioni utili</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>La pagina si aggiorna automaticamente ogni 30 secondi.</p>
+                        
+                        <div th:if="${charging.status == 'IN_PROGRESS'}">
+                            <h6>Durante la ricarica:</h6>
+                            <ul>
+                                <li>Non spostare l'auto durante la ricarica</li>
+                                <li>Il MWbot si posiziona sotto l'auto in modo automatico</li>
+                                <li>In caso di problemi contattare l'assistenza</li>
+                            </ul>
+                        </div>
+                        
+                        <div th:if="${charging.status == 'COMPLETED'}">
+                            <h6>Dopo la ricarica:</h6>
+                            <ul>
+                                <li>Il pagamento sarà addebitato alla tua uscita dal parcheggio</li>
+                                <li>Puoi richiedere un'ulteriore ricarica se necessario</li>
+                                <li>Il MWbot si allontana automaticamente dopo la ricarica</li>
+                            </ul>
+                        </div>
+                        
+                        <div th:if="${charging.status == 'QUEUED' || charging.status == 'PENDING'}">
+                            <h6>In attesa:</h6>
+                            <ul>
+                                <li>Il MWbot ti raggiungerà non appena disponibile</li>
+                                <li>Puoi annullare la richiesta in qualsiasi momento</li>
+                                <li>Riceverai una notifica quando la ricarica inizierà</li>
+                            </ul>
+                        </div>
+                        
+                        <p class="mt-3">Per assistenza contattare il numero 800-123456</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

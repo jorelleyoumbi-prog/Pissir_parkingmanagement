@@ -1,0 +1,90 @@
+package com.parkingsystem.backend.dto;
+
+/**
+ * DTO for MWbot data
+ */
+public class MWbotDto {
+
+    private Long id;
+    private String botId;
+    private String status;
+    private Integer batteryLevel;
+    private Double chargingRateKw;
+    private Long currentChargingRequestId;
+    private Boolean maintenanceRequired;    // Usa Boolean (classe wrapper) invece di boolean
+    private String currentLocation;
+    private String errorMessage;
+
+    // Getters and Setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getBotId() {
+        return botId;
+    }
+
+    public void setBotId(String botId) {
+        this.botId = botId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Integer getBatteryLevel() {
+        return batteryLevel;
+    }
+
+    public void setBatteryLevel(Integer batteryLevel) {
+        this.batteryLevel = batteryLevel;
+    }
+
+    public Double getChargingRateKw() {
+        return chargingRateKw;
+    }
+
+    public void setChargingRateKw(Double chargingRateKw) {
+        this.chargingRateKw = chargingRateKw;
+    }
+
+    public Long getCurrentChargingRequestId() {
+        return currentChargingRequestId;
+    }
+
+    public void setCurrentChargingRequestId(Long currentChargingRequestId) {
+        this.currentChargingRequestId = currentChargingRequestId;
+    }
+
+    public Boolean isMaintenanceRequired() {
+        return maintenanceRequired;
+    }
+
+    public void setMaintenanceRequired(Boolean maintenanceRequired) {
+        this.maintenanceRequired = maintenanceRequired;
+    }
+
+    public String getCurrentLocation() {
+        return currentLocation;
+    }
+
+    public void setCurrentLocation(String currentLocation) {
+        this.currentLocation = currentLocation;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
+    }
+}

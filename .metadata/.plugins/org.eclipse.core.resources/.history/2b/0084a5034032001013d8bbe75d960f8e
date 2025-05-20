@@ -1,0 +1,141 @@
+package com.parkingsystem.config;
+
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.integration.annotation.ServiceActivator;
+import org.springframework.integration.channel.DirectChannel;
+import org.springframework.integration.core.MessagingTemplate;
+import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
+import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
+import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannelAdapter;
+import org.springframework.integration.mqtt.outbound.MqttPahoMessageHandler;
+import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageHandler;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.parkingsystem.service.ChargingSimulationService;
+
+@Configuration
+@ConditionalOnProperty(name = "mqtt.enabled", havingValue = "true")
+public class MqttConfig {
+
+    private static final Logger logger = LoggerFactory.getLogger(MqttConfig.class);
+
+    @Value("${mqtt.broker.url}")
+    private String brokerUrl;
+
+    @Value("${mqtt.client.id}")
+    private String clientId;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    @Autowired
+    private ChargingSimulationService chargingSimulationService;
+
+    @Bean
+    public MqttPahoClientFactory mqttClientFactory() {
+        DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setServerURIs(new String[]{ brokerUrl });
+        options.setCleanSession(true);
+        options.setAutomaticReconnect(true);
+        factory.setConnectionOptions(options);
+        return factory;
+    }
+
+    @Bean 
+    public MessageChannel mqttOutboundChannel() { 
+        return new DirectChannel(); 
+    }
+
+    @Bean 
+    public MessageChannel mqttInboundChannel() { 
+        return new DirectChannel(); 
+    }
+
+    @Bean
+    @ServiceActivator(inputChannel = "mqttOutboundChannel")
+    public MessageHandler mqttOutboundHandler() {
+        MqttPahoMessageHandler handler = new MqttPahoMessageHandler(clientId + "_out", mqttClientFactory());
+        handler.setAsync(true);
+        handler.setDefaultTopic(MqttTopics.PREFIX + "/default");
+        handler.setConverter(new DefaultPahoMessageConverter());
+        return handler;
+    }
+
+    @Bean
+    public MqttPahoMessageDrivenChannelAdapter mqttInboundAdapter() {
+        // Sottoscriviti ai comandi per MWbot e altri topic rilevanti
+        MqttPahoMessageDrivenChannelAdapter adapter = new MqttPahoMessageDrivenChannelAdapter(
+            clientId + "_in", 
+            mqttClientFactory(),
+            MqttTopics.formatTopic(MqttTopics.MWBOT_COMMAND, "+"),
+            MqttTopics.CHARGING_REQUEST
+        );
+        
+        adapter.setOutputChannel(mqttInboundChannel());
+        adapter.setConverter(new DefaultPahoMessageConverter());
+        adapter.setQos(1);
+        return adapter;
+    }
+
+    @Bean
+    @ServiceActivator(inputChannel = "mqttInboundChannel")
+    public MessageHandler inboundMessageHandler() {
+        return message -> {
+            String topic = message.getHeaders().get("mqtt_receivedTopic").toString();
+            String payload = message.getPayload().toString();
+            
+            logger.debug("Received message on topic: {}, payload: {}", topic, payload);
+            
+            try {
+                if (topic.matches(MqttTopics.formatTopic(MqttTopics.MWBOT_COMMAND, ".*"))) {
+                    handleMWbotCommand(topic, payload);
+                } else if (topic.equals(MqttTopics.CHARGING_REQUEST)) {
+                    chargingSimulationService.handleChargingRequest(payload);
+                }
+            } catch (Exception e) {
+                logger.error("Error processing MQTT message: " + e.getMessage(), e);
+            }
+        };
+    }
+    
+    private void handleMWbotCommand(String topic, String payload) {
+        try {
+            // Estrai botId dal topic
+            String botId = topic.split("/")[2];
+            
+            JsonNode command = objectMapper.readTree(payload);
+            String action = command.get("command").asText();
+            
+            logger.info("Received command for MWbot {}: {}", botId, action);
+            
+            if ("START_CHARGING".equals(action)) {
+                Long requestId = command.get("requestId").asLong();
+                String parkingSpotId = command.get("parkingSpotId").asText();
+                int targetPercentage = command.get("targetPercentage").asInt();
+                
+                chargingSimulationService.startCharging(botId, requestId, parkingSpotId, targetPercentage);
+            } else if ("STOP_CHARGING".equals(action)) {
+                Long requestId = command.get("requestId").asLong();
+                chargingSimulationService.stopCharging(botId, requestId);
+            }
+        } catch (Exception e) {
+            logger.error("Error processing MWbot command: " + e.getMessage(), e);
+        }
+    }
+
+    @Bean
+    public MessagingTemplate mqttTemplate() {
+        return new MessagingTemplate(mqttOutboundChannel());
+    }
+}

@@ -1,0 +1,12 @@
+spring.application.name=backend-service
+server.port=8081
+spring.datasource.url=jdbc:mysql://localhost:3306/parkingdb
+spring.datasource.username=root
+spring.datasource.password=root
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+
+mqtt.broker.url=tcp://localhost:1883
+mqtt.client.id=backend-client
+mqtt.enabled=true
+mqtt.topic.prefix=charging/request

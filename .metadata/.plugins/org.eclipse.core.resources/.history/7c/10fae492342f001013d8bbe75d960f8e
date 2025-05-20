@@ -1,0 +1,140 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.exception.BadRequestException;
+import com.parkingsystem.exception.ResourceNotFoundException;
+import com.parkingsystem.model.User;
+import com.parkingsystem.repository.UserRepository;
+
+/**
+ * Service for user management operations
+ */
+@Service
+public class UserService implements UserDetailsService {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with username: " + username));
+    }
+
+    public User getUserByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
+    }
+
+    public User findById(Long id) {
+        return userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+    }
+
+    public boolean existsByUsername(String username) {
+        return userRepository.existsByUsername(username);
+    }
+
+    public boolean existsByEmail(String email) {
+        return userRepository.existsByEmail(email);
+    }
+
+    public User registerUser(User user) {
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        user.setCreatedAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
+        return userRepository.save(user);
+    }
+
+    public User upgradeToPremium(Long userId, String creditCardNumber, String creditCardExpiry, String creditCardCvv) {
+        User user = findById(userId);
+
+        if (user.getRole() == User.UserRole.PREMIUM_USER) {
+            throw new BadRequestException("User is already a premium user");
+        }
+
+        user.setRole(User.UserRole.PREMIUM_USER);
+        user.setCreditCardNumber(creditCardNumber);
+        user.setCreditCardExpiry(creditCardExpiry);
+        user.setCreditCardCvv(creditCardCvv);
+        user.setUpdatedAt(LocalDateTime.now());
+
+        return userRepository.save(user);
+    }
+
+    public User updateUser(Long id, User userDetails) {
+        User user = findById(id);
+
+        if (userDetails.getEmail() != null) {
+            user.setEmail(userDetails.getEmail());
+        }
+
+        if (userDetails.getFullName() != null) {
+            user.setFullName(userDetails.getFullName());
+        }
+
+        if (userDetails.getPassword() != null && !userDetails.getPassword().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(userDetails.getPassword()));
+        }
+
+        if (userDetails.getCarModel() != null) {
+            user.setCarModel(userDetails.getCarModel());
+        }
+
+        if (userDetails.getCarLicensePlate() != null) {
+            user.setCarLicensePlate(userDetails.getCarLicensePlate());
+        }
+
+        if (userDetails.getBatteryCapacityKw() != null) {
+            user.setBatteryCapacityKw(userDetails.getBatteryCapacityKw());
+        }
+
+        if (userDetails.getRole() != null) {
+            user.setRole(userDetails.getRole());
+        }
+
+        user.setUpdatedAt(LocalDateTime.now());
+        return userRepository.save(user);
+    }
+
+    public List<User> getAllUsers() {
+        List<User> users = new ArrayList<>();
+        userRepository.findAll().forEach(users::add);
+        return users;
+    }
+
+    public List<User> getAllPremiumUsers() {
+        return userRepository.findByRole(User.UserRole.PREMIUM_USER);
+    }
+
+    public List<User> getAllAdmins() {
+        return userRepository.findByRole(User.UserRole.ADMIN);
+    }
+
+    public void deleteUser(Long id) {
+        User user = findById(id);
+        userRepository.delete(user);
+    }
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        User user = findByUsername(username);
+        return org.springframework.security.core.userdetails.User.builder()
+                .username(user.getUsername())
+                .password(user.getPassword())
+                .roles(user.getRole().toString())
+                .build();
+    }
+}

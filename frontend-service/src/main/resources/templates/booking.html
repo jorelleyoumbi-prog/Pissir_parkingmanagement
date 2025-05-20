@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prenota Parcheggio - Smart Parking System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" th:href="@{/css/styles.css}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="#">Smart Parking System</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" th:href="@{/dashboard}">Dashboard</a>
+                    </li>
+                    <li class="nav-item" th:if="${user.premium}">
+                        <a class="nav-link active" th:href="@{/booking}">Prenota</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" th:href="@{/charging}">Ricarica</a>
+                    </li>
+                </ul>
+                <div class="navbar-text text-white me-3">
+                    Benvenuto, <span th:text="${user.fullName}">Utente</span>
+                </div>
+                <a class="btn btn-outline-light" th:href="@{/logout}">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="alert alert-success" th:if="${success}" th:text="${success}"></div>
+        <div class="alert alert-danger" th:if="${error}" th:text="${error}"></div>
+        
+        <h1 class="mb-4">Prenota un posto</h1>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Controlla disponibilità</h5>
+                    </div>
+                    <div class="card-body">
+                        <form th:action="@{/booking/check-availability}" method="post">
+                            <div class="mb-3">
+                                <label for="startTime" class="form-label">Data e ora di arrivo</label>
+                                <input type="datetime-local" class="form-control flatpickr" id="startTime" name="startTime" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="endTime" class="form-label">Data e ora di uscita</label>
+                                <input type="datetime-local" class="form-control flatpickr" id="endTime" name="endTime" required>
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="chargingRequired" name="chargingRequired">
+                                <label class="form-check-label" for="chargingRequired">Richiedo ricarica</label>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Controlla disponibilità</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card mb-4" th:if="${availableSpots != null && availableSpots.length > 0}">
+                    <div class="card-header">
+                        <h5>Posti disponibili</h5>
+                    </div>
+                    <div class="card-body">
+                        <p>Posti disponibili dal <span th:text="${#temporals.format(startTime, 'dd/MM/yyyy HH:mm')}"></span> al <span th:text="${#temporals.format(endTime, 'dd/MM/yyyy HH:mm')}"></span></p>
+                        
+                        <div class="list-group">
+                            <div th:each="spot : ${availableSpots}" class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h5 class="mb-1">Posto <span th:text="${spot.spotNumber}"></span></h5>
+                                    <small th:if="${spot.chargingAvailable}" class="text-success">Ricarica disponibile</small>
+                                </div>
+                                <p class="mb-1" th:text="${spot.location}">Ubicazione</p>
+                                <form th:action="@{/booking/reserve}" method="post" class="mt-2">
+                                    <input type="hidden" name="parkingSpotId" th:value="${spot.id}">
+                                    <input type="hidden" name="startTime" th:value="${startTime}">
+                                    <input type="hidden" name="endTime" th:value="${endTime}">
+                                    <input type="hidden" name="chargingRequired" th:value="${chargingRequired != null ? chargingRequired : false}">
+                                    <button type="submit" class="btn btn-sm btn-success">Prenota</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info" th:if="${availableSpots != null && availableSpots.length == 0}">
+                    Nessun posto disponibile per il periodo selezionato.
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Le mie prenotazioni</h5>
+                    </div>
+                    <div class="card-body">
+                        <div th:if="${reservations == null || #arrays.length(reservations) == 0}">
+                            <p>Non hai prenotazioni attive.</p>
+                        </div>
+                        <div th:if="${reservations != null && #arrays.length(reservations) > 0}" class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Posto</th>
+                                        <th>Inizio</th>
+                                        <th>Fine</th>
+                                        <th>Stato</th>
+                                        <th>Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr th:each="res : ${reservations}">
+                                        <td th:text="${res.parkingSpotNumber}"></td>
+                                        <td th:text="${#temporals.format(res.startTime, 'dd/MM/yyyy HH:mm')}"></td>
+                                        <td th:text="${#temporals.format(res.endTime, 'dd/MM/yyyy HH:mm')}"></td>
+                                        <td th:text="${res.status}"></td>
+                                        <td>
+                                            <form th:if="${res.status == 'PENDING' || res.status == 'CONFIRMED'}" 
+                                                  th:action="@{/booking/cancel}" method="post" style="display: inline;">
+                                                <input type="hidden" name="reservationId" th:value="${res.id}">
+                                                <button type="submit" class="btn btn-sm btn-danger">Cancella</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Informazioni</h5>
+                    </div>
+                    <div class="card-body">
+                        <h6>Regole di prenotazione:</h6>
+                        <ul>
+                            <li>Le prenotazioni devono essere effettuate almeno 1 ora prima dell'arrivo</li>
+                            <li>Il tempo massimo di prenotazione è di 24 ore</li>
+                            <li>È possibile cancellare la prenotazione fino a 30 minuti prima dell'inizio</li>
+                            <li>In caso di mancato arrivo, verrà addebitata una penale</li>
+                        </ul>
+                        <p>Per qualsiasi problema contattare l'assistenza.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Inizializza date picker
+            flatpickr(".flatpickr", {
+                enableTime: true,
+                dateFormat: "Y-m-d H:i",
+                time_24hr: true,
+                minDate: "today"
+            });
+            
+            // Imposta valori predefiniti se disponibili
+            if (document.getElementById('startTime').value === '') {
+                const now = new Date();
+                now.setHours(now.getHours() + 1);
+                now.setMinutes(0);
+                
+                const end = new Date(now);
+                end.setHours(end.getHours() + 2);
+                
+                document.getElementById('startTime').value = formatDateTime(now);
+                document.getElementById('endTime').value = formatDateTime(end);
+            }
+        });
+        
+        function formatDateTime(date) {
+            const year = date.getFullYear();
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            
+            return `${year}-${month}-${day} ${hours}:${minutes}`;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+<!-- templates/admin/settings.html -->
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Impostazioni - Admin Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        /* Stessa CSS della dashboard */
+    </style>
+</head>
+<body>
+    <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
+        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3" href="#">Smart Parking System</a>
+        <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="navbar-nav">
+            <div class="nav-item text-nowrap">
+                <a class="nav-link px-3" th:href="@{/logout}">Sign out</a>
+            </div>
+        </div>
+    </header>
+    
+    <div class="container-fluid">
+        <div class="row">
+            <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" aria-current="page" th:href="@{/admin/dashboard}">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" th:href="@{/admin/spots}">
+                                <i class="bi bi-p-square"></i> Posti Auto
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" th:href="@{/admin/mwbots}">
+                                <i class="bi bi-robot"></i> MWbots
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" th:href="@{/admin/users}">
+                                <i class="bi bi-people"></i> Utenti
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" th:href="@{/admin/payments}">
+                                <i class="bi bi-credit-card"></i> Pagamenti
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" th:href="@{/admin/reports}">
+                                <i class="bi bi-bar-chart"></i> Report
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" th:href="@{/admin/settings}">
+                                <i class="bi bi-gear"></i> Impostazioni
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+            
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">Impostazioni</h1>
+                </div>
+                
+                <div class="alert alert-success" th:if="${success}" th:text="${success}"></div>
+                <div class="alert alert-danger" th:if="${error}" th:text="${error}"></div>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Tariffe</h5>
+                    </div>
+                    <div class="card-body">
+                        <form th:action="@{/admin/settings/rates}" method="post">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="parkingRate" class="form-label">Tariffa Parcheggio</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="parkingRate" name="parkingRate" 
+                                               step="0.01" min="0" th:value="${rates != null ? rates.baseRate : 3.0}" required>
+                                        <span class="input-group-text">€/ora</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="chargingRate" class="form-label">Tariffa Ricarica</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="chargingRate" name="chargingRate" 
+                                               step="0.01" min="0" th:value="${rates != null ? rates.chargingRate : 0.35}" required>
+                                        <span class="input-group-text">€/kWh</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button type="submit" class="btn btn-primary">Salva Tariffe</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Configurazione Sistema</h5>
+                    </div>
+                    <div class="card-body">
+                        <form>
+                            <div class="mb-3">
+                                <label for="timeZone" class="form-label">Fuso Orario</label>
+                                <select class="form-select" id="timeZone">
+                                    <option selected>Europe/Rome</option>
+                                    <option>Europe/London</option>
+                                    <option>Europe/Paris</option>
+                                    <option>Europe/Berlin</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="dateFormat" class="form-label">Formato Data</label>
+                                <select class="form-select" id="dateFormat">
+                                    <option selected>dd/MM/yyyy HH:mm</option>
+                                    <option>yyyy-MM-dd HH:mm</option>
+                                    <option>MM/dd/yyyy hh:mm a</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="currency" class="form-label">Valuta</label>
+                                <select class="form-select" id="currency">
+                                    <option selected>EUR</option>
+                                    <option>USD</option>
+                                    <option>GBP</option>
+                                </select>
+                            </div>
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button type="submit" class="btn btn-primary">Salva Configurazione</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Configurazione MQTT</h5>
+                    </div>
+                    <div class="card-body">
+                        <form>
+                            <div class="mb-3">
+                                <label for="mqttBroker" class="form-label">Broker MQTT</label>
+                                <input type="text" class="form-control" id="mqttBroker" value="tcp://localhost:1883">
+                            </div>
+                            <div class="mb-3">
+                                <label for="mqttClientId" class="form-label">Client ID</label>
+                                <input type="text" class="form-control" id="mqttClientId" value="backend-client">
+                            </div>
+                            <div class="mb-3">
+                                <label for="mqttTopicPrefix" class="form-label">Prefisso Topic</label>
+                                <input type="text" class="form-control" id="mqttTopicPrefix" value="parkingsystem">
+                            </div>
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <button type="submit" class="btn btn-primary">Salva Configurazione MQTT</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+package com.parkingsystem.backend.util;
+
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Component;
+
+import com.sun.org.apache.xml.internal.security.algorithms.SignatureAlgorithm;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+
+/**
+ * Utility class for JWT token generation and validation
+ */
+@Component
+public class JwtUtil {
+
+    @Value("${jwt.secret:defaultsecretkey}")
+    private String secret;
+
+    @Value("${jwt.expiration:86400000}")
+    private long expiration;
+
+    /**
+     * Extract username from token
+     * @param token JWT token
+     * @return Username
+     */
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
+
+    /**
+     * Extract expiration date from token
+     * @param token JWT token
+     * @return Expiration date
+     */
+    public Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
+
+    /**
+     * Extract claim from token
+     * @param token JWT token
+     * @param claimsResolver Function to resolve the claims
+     * @return Claim value
+     */
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+
+    /**
+     * Extract all claims from token
+     * @param token JWT token
+     * @return Claims
+     */
+    private Claims extractAllClaims(String token) {
+        return Jwts.parser().setSigningKey(secret).parseClaimsJws(token).getBody();
+    }
+
+    /**
+     * Check if token is expired
+     * @param token JWT token
+     * @return true if token is expired
+     */
+    private Boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
+
+    /**
+     * Generate token for user
+     * @param userDetails User details
+     * @return Generated JWT token
+     */
+    public String generateToken(UserDetails userDetails) {
+        Map<String, Object> claims = new HashMap<>();
+        return createToken(claims, userDetails.getUsername());
+    }
+
+    /**
+     * Create token with claims
+     * @param claims Claims to include in token
+     * @param subject Token subject (username)
+     * @return JWT token
+     */
+    private String createToken(Map<String, Object> claims, String subject) {
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(subject)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(SignatureAlgorithm.HS256, secret)
+                .compact();
+    }
+
+    /**
+     * Validate token
+     * @param token JWT token
+     * @param userDetails User details
+     * @return true if token is valid
+     */
+    public Boolean validateToken(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+    }
+}

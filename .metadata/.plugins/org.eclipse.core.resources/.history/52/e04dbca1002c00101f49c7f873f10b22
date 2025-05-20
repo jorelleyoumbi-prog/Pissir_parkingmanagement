@@ -1,0 +1,69 @@
+package com.parkingsystem.model;
+
+import java.time.LocalDateTime;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "charging_requests")
+@Getter
+@Setter
+public class ChargingRequest {
+
+    public enum ChargingStatus {
+        PENDING,
+        QUEUED,
+        IN_PROGRESS,
+        COMPLETED
+    }
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    @ManyToOne
+    @JoinColumn(name = "parking_spot_id")
+    private ParkingSpot parkingSpot;
+
+    @Column(name = "initial_percentage")
+    private Integer initialPercentage;
+
+    @Column(name = "target_percentage")
+    private Integer targetPercentage;
+
+    @Column(name = "current_percentage")
+    private Integer currentPercentage;
+
+    @Column(name = "queue_position")
+    private Integer queuePosition;
+
+    @Enumerated(EnumType.STRING)
+    private ChargingStatus status;
+
+    @Column(name = "charging_start_time")
+    private LocalDateTime chargingStartTime;
+
+    @Column(name = "charging_completion_time")
+    private LocalDateTime chargingCompletionTime;
+
+    @Column(name = "estimated_completion_time")
+    private LocalDateTime estimatedCompletionTime;
+
+    @Column(name = "total_energy_kwh")
+    private Double totalEnergyKwh;
+
+    @Column(name = "notification_requested")
+    private boolean notificationRequested;
+
+    @Column(name = "notification_sent")
+    private boolean notificationSent;
+
+    // I metodi getter e setter sono già generati da Lombok (@Getter, @Setter)
+
+}

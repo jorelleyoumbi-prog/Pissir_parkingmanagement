@@ -1,0 +1,5 @@
+package com.parkingsystem.backend.service;
+
+public class MqttPublisherService {
+
+}

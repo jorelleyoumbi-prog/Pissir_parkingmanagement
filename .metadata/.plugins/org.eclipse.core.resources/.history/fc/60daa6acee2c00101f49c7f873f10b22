@@ -1,0 +1,214 @@
+package com.parkingsystem.backend.dto;
+
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * Data Transfer Object for ChargingRequest entity
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ChargingRequestDto {
+    
+    private Long id;
+    
+    @NotNull(message = "User ID is required")
+    private Long userId;
+    
+    private String username;
+    
+    private Long parkingSpotId;
+    
+    private String spotNumber;
+    
+    private String status;
+    
+    private Integer initialPercentage;
+    
+    private Integer currentPercentage;
+    
+    private Integer targetPercentage;
+    
+    private Integer queuePosition;
+    
+    private String estimatedStartTime;
+    
+    private String estimatedCompletionTime;
+    
+    private String chargingStartTime;
+    
+    private String chargingCompletionTime;
+    
+    private String createdAt;
+    
+    private boolean notificationRequested;
+    
+    private boolean notificationSent;
+    
+    private Double totalEnergyKwh;
+    
+    // Validazione custom per verificare che il target sia maggiore dell'iniziale
+    @AssertTrue(message = "Target percentage must be greater than initial percentage")
+    private boolean isTargetPercentageValid() {
+        return initialPercentage == null || targetPercentage == null || 
+               targetPercentage > initialPercentage;
+    }
+    
+    public Long getId() {
+		return id;
+	}
+
+	public void setId(Long id) {
+		this.id = id;
+	}
+
+	public Long getUserId() {
+		return userId;
+	}
+
+	public void setUserId(Long userId) {
+		this.userId = userId;
+	}
+
+	public String getUsername() {
+		return username;
+	}
+
+	public void setUsername(String username) {
+		this.username = username;
+	}
+
+	public Long getParkingSpotId() {
+		return parkingSpotId;
+	}
+
+	public void setParkingSpotId(Long parkingSpotId) {
+		this.parkingSpotId = parkingSpotId;
+	}
+
+	public String getSpotNumber() {
+		return spotNumber;
+	}
+
+	public void setSpotNumber(String spotNumber) {
+		this.spotNumber = spotNumber;
+	}
+
+	public String getStatus() {
+		return status;
+	}
+
+	public void setStatus(String status) {
+		this.status = status;
+	}
+
+	public Integer getInitialPercentage() {
+		return initialPercentage;
+	}
+
+	public void setInitialPercentage(Integer initialPercentage) {
+		this.initialPercentage = initialPercentage;
+	}
+
+	public Integer getCurrentPercentage() {
+		return currentPercentage;
+	}
+
+	public void setCurrentPercentage(Integer currentPercentage) {
+		this.currentPercentage = currentPercentage;
+	}
+
+	public Integer getTargetPercentage() {
+		return targetPercentage;
+	}
+
+	public void setTargetPercentage(Integer targetPercentage) {
+		this.targetPercentage = targetPercentage;
+	}
+
+	public Integer getQueuePosition() {
+		return queuePosition;
+	}
+
+	public void setQueuePosition(Integer queuePosition) {
+		this.queuePosition = queuePosition;
+	}
+
+	public String getEstimatedStartTime() {
+		return estimatedStartTime;
+	}
+
+	public void setEstimatedStartTime(String estimatedStartTime) {
+		this.estimatedStartTime = estimatedStartTime;
+	}
+
+	public String getEstimatedCompletionTime() {
+		return estimatedCompletionTime;
+	}
+
+	public void setEstimatedCompletionTime(String estimatedCompletionTime) {
+		this.estimatedCompletionTime = estimatedCompletionTime;
+	}
+
+	public String getChargingStartTime() {
+		return chargingStartTime;
+	}
+
+	public void setChargingStartTime(String chargingStartTime) {
+		this.chargingStartTime = chargingStartTime;
+	}
+
+	public String getChargingCompletionTime() {
+		return chargingCompletionTime;
+	}
+
+	public void setChargingCompletionTime(String chargingCompletionTime) {
+		this.chargingCompletionTime = chargingCompletionTime;
+	}
+
+	public String getCreatedAt() {
+		return createdAt;
+	}
+
+	public void setCreatedAt(String createdAt) {
+		this.createdAt = createdAt;
+	}
+
+	public boolean isNotificationRequested() {
+		return notificationRequested;
+	}
+
+	public void setNotificationRequested(boolean notificationRequested) {
+		this.notificationRequested = notificationRequested;
+	}
+
+	public boolean isNotificationSent() {
+		return notificationSent;
+	}
+
+	public void setNotificationSent(boolean notificationSent) {
+		this.notificationSent = notificationSent;
+	}
+
+	public Double getTotalEnergyKwh() {
+		return totalEnergyKwh;
+	}
+
+	public void setTotalEnergyKwh(Double totalEnergyKwh) {
+		this.totalEnergyKwh = totalEnergyKwh;
+	}
+
+	public String getEstimationMessage() {
+		return estimationMessage;
+	}
+
+	public void setEstimationMessage(String estimationMessage) {
+		this.estimationMessage = estimationMessage;
+	}
+
+	private String estimationMessage;
+}

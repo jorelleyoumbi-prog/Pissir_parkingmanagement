@@ -1,0 +1,228 @@
+package com.parkingsystem.mqtt;
+
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.integration.annotation.ServiceActivator;
+import org.springframework.integration.mqtt.support.MqttHeaders;
+import org.springframework.messaging.MessageHandler;
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.parkingsystem.model.MWbot;
+import com.parkingsystem.service.ChargingService;
+import com.parkingsystem.service.MWbotService;
+import com.parkingsystem.service.ParkingService;
+
+/**
+ * MQTT subscriber for handling incoming MQTT messages
+ */
+@Component
+public class MqttSubscriber {
+
+    @Value("${mqtt.enabled:false}")
+    private boolean mqttEnabled;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private ParkingService parkingService;
+
+    @Autowired
+    private ChargingService chargingService;
+
+    @Autowired
+    private MWbotService mwbotService;
+
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final long INITIAL_RETRY_DELAY = 1000L;
+
+    @Bean
+    @ServiceActivator(inputChannel = "mqttInboundChannel")
+    public MessageHandler inboundMessageHandler() {
+        return message -> {
+            String topic = (String) message.getHeaders().get(MqttHeaders.RECEIVED_TOPIC);
+            String payload = (String) message.getPayload();
+            processMessage(topic, payload);
+        };
+    }
+
+    public void handleParkingSensorUpdateWithRetry(String message, String topic) {
+        int retryCount = 0;
+        boolean success = false;
+
+        while (retryCount < MAX_RETRY_ATTEMPTS && !success) {
+            try {
+                handleParkingSensorUpdate(message, topic);
+                success = true;
+            } catch (Exception e) {
+                retryCount++;
+                System.err.println("Retry " + retryCount + " - Error processing parking sensor update: " + e.getMessage());
+                if (retryCount < MAX_RETRY_ATTEMPTS) {
+                    try {
+                        long delay = INITIAL_RETRY_DELAY * (1L << (retryCount - 1));
+                        TimeUnit.MILLISECONDS.sleep(delay);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        }
+        if (!success) {
+            System.err.println("Failed to process parking sensor update after retries.");
+        }
+    }
+
+    public void handleParkingSensorUpdate(String message, String topic) throws Exception {
+        Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+        String[] topicParts = topic.split("/");
+        if (topicParts.length >= 4) {
+            Long spotId = Long.valueOf(topicParts[3]);
+            String status = payload.getOrDefault("status", "").toString();
+            switch (status.toLowerCase()) {
+                case "occupied" -> parkingService.markSpotAsOccupied(spotId);
+                case "free" -> parkingService.markSpotAsFree(spotId);
+                default -> System.err.println("[MQTT] Unexpected status: " + status);
+            }
+        } else {
+            throw new IllegalArgumentException("Topic does not contain spot ID.");
+        }
+    }
+
+    public void handleChargingProgressUpdate(String message, String topic) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            if (payload.containsKey("requestId") && payload.containsKey("currentPercentage")) {
+                Long requestId = Long.valueOf(payload.get("requestId").toString());
+                Integer currentPercentage = Integer.valueOf(payload.get("currentPercentage").toString());
+                chargingService.updateBatteryPercentage(requestId, currentPercentage);
+                System.out.println("[MQTT] Charging request " + requestId + " updated to " + currentPercentage + "%");
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing charging progress update: " + e.getMessage());
+        }
+    }
+
+    public void handleChargingStatusUpdate(String message, String topic) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            if (payload.containsKey("requestId") && payload.containsKey("status")) {
+                Long requestId = Long.valueOf(payload.get("requestId").toString());
+                String status = payload.get("status").toString();
+                if ("COMPLETED".equalsIgnoreCase(status)) {
+                    chargingService.completeChargingRequest(requestId);
+                    System.out.println("[MQTT] Charging request " + requestId + " completed");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing charging status update: " + e.getMessage());
+        }
+    }
+
+    public void handleMWbotStatusUpdate(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            String botId = payload.get("botId").toString();
+            String statusStr = payload.get("status").toString();
+            MWbot.BotStatus status = MWbot.BotStatus.valueOf(statusStr.toUpperCase());
+            MWbot bot = mwbotService.getMWbotByBotId(botId);
+            if (bot != null) {
+                bot.setStatus(status);
+                if (payload.containsKey("batteryLevel")) {
+                    bot.setBatteryLevel(Integer.parseInt(payload.get("batteryLevel").toString()));
+                }
+                mwbotService.updateMWbot(bot.getId(), bot);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing MWbot status update: " + e.getMessage());
+        }
+    }
+
+    public void handleMWbotBatteryUpdate(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            String botId = payload.get("botId").toString();
+            int batteryLevel = Integer.parseInt(payload.get("batteryLevel").toString());
+            MWbot bot = mwbotService.getMWbotByBotId(botId);
+            if (bot != null) {
+                bot.setBatteryLevel(batteryLevel);
+                mwbotService.updateMWbot(bot.getId(), bot);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing MWbot battery update: " + e.getMessage());
+        }
+    }
+
+    public void handleMWbotMaintenance(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            String botId = payload.get("botId").toString();
+            boolean maintenanceRequired = Boolean.parseBoolean(payload.get("maintenanceRequired").toString());
+            MWbot bot = mwbotService.getMWbotByBotId(botId);
+            if (bot != null) {
+                bot.setMaintenanceRequired(maintenanceRequired);
+                if (payload.containsKey("reason")) {
+                    bot.setErrorMessage(payload.get("reason").toString());
+                }
+                mwbotService.updateMWbot(bot.getId(), bot);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing MWbot maintenance: " + e.getMessage());
+        }
+    }
+
+    public void handleParkingEntranceEvent(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            if (payload.containsKey("carId")) {
+                String carId = payload.get("carId").toString();
+                System.out.println("[MQTT] Car entered: " + carId);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing entrance event: " + e.getMessage());
+        }
+    }
+
+    public void handleParkingExitEvent(String message) {
+        try {
+            Map<String, Object> payload = objectMapper.readValue(message, Map.class);
+            if (payload.containsKey("carId")) {
+                String carId = payload.get("carId").toString();
+                System.out.println("[MQTT] Car exited: " + carId);
+            }
+        } catch (Exception e) {
+            System.err.println("Error processing exit event: " + e.getMessage());
+        }
+    }
+
+    public void processMessage(String topic, String message) {
+        System.out.println("[MQTT] Received message on topic: " + topic);
+        try {
+            if (topic.matches("parkingsystem/parking/spots/\\d+/status")) {
+                handleParkingSensorUpdateWithRetry(message, topic);
+            } else if (topic.matches("parkingsystem/mwbot/charging/\\d+/progress")) {
+                handleChargingProgressUpdate(message, topic);
+            } else if (topic.matches("parkingsystem/mwbot/charging/\\d+/status")) {
+                handleChargingStatusUpdate(message, topic);
+            } else if (topic.startsWith("parkingsystem/mwbot/status/")) {
+                handleMWbotStatusUpdate(message);
+            } else if (topic.startsWith("parkingsystem/mwbot/battery/")) {
+                handleMWbotBatteryUpdate(message);
+            } else if (topic.startsWith("parkingsystem/mwbot/maintenance/")) {
+                handleMWbotMaintenance(message);
+            } else if (topic.equals("parkingsystem/parking/entrance")) {
+                handleParkingEntranceEvent(message);
+            } else if (topic.equals("parkingsystem/parking/exit")) {
+                handleParkingExitEvent(message);
+            } else {
+                System.out.println("[MQTT] Unhandled topic: " + topic);
+            }
+        } catch (Exception e) {
+            System.err.println("[MQTT] Error dispatching message: " + e.getMessage());
+        }
+    }
+}

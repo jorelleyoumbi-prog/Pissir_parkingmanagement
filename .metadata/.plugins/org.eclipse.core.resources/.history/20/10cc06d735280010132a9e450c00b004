@@ -1,0 +1,228 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.model.Reservation;
+import com.parkingsystem.backend.repository.ChargingRequestRepository;
+import com.parkingsystem.backend.repository.ParkingSpotRepository;
+import com.parkingsystem.backend.repository.ReservationRepository;
+import com.parkingsystem.backend.service.NotificationService;
+
+@Service
+public class ParkingService {
+
+    @Autowired
+    private ParkingSpotRepository parkingSpotRepository;
+    
+    @Autowired
+    private ReservationRepository reservationRepository;
+    
+    @Autowired
+    private ChargingRequestRepository chargingRequestRepository;
+    
+    @Autowired
+    private NotificationService notificationService;
+    
+    /**
+     * Get all parking spots.
+     */
+    public List<ParkingSpot> getAllParkingSpots() {
+        return parkingSpotRepository.findAll();
+    }
+    
+    /**
+     * Get parking spot by ID.
+     */
+    public ParkingSpot getParkingSpotById(Long id) {
+        return parkingSpotRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Parking spot not found with id: " + id));
+    }
+    
+    /**
+     * Get parking spot by spot number.
+     */
+    public ParkingSpot getParkingSpotByNumber(String spotNumber) {
+        return parkingSpotRepository.findBySpotNumber(spotNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Parking spot not found with number: " + spotNumber));
+    }
+    
+    /**
+     * Get available parking spots (with or without charging) for a given time range.
+     */
+    public List<ParkingSpot> getAvailableParkingSpots(boolean chargingRequired, LocalDateTime startTime, LocalDateTime endTime) {
+        return findAvailableSpots(startTime, endTime, chargingRequired);
+    }
+    
+    /**
+     * Get charging spots (all spots that support charging).
+     */
+    public List<ParkingSpot> getChargingSpots() {
+        return parkingSpotRepository.findByChargingAvailableTrue();
+    }
+    
+    /**
+     * Get available charging spots for a given time range.
+     */
+    public List<ParkingSpot> getAvailableChargingSpots(LocalDateTime startTime, LocalDateTime endTime) {
+        return findAvailableSpots(startTime, endTime, true);
+    }
+    
+    /**
+     * Create a new parking spot.
+     */
+    public ParkingSpot createParkingSpot(ParkingSpot parkingSpot) {
+        // Verifica che il numero del posto sia fornito
+        if (parkingSpot.getSpotNumber() == null || parkingSpot.getSpotNumber().trim().isEmpty()) {
+            throw new BadRequestException("Spot number is required");
+        }
+
+        // Verifica che il numero del posto non sia già in uso
+        if (parkingSpotRepository.existsBySpotNumber(parkingSpot.getSpotNumber())) {
+            throw new BadRequestException("Spot number is already in use");
+        }
+
+        // Impostazioni di default
+        parkingSpot.setOccupied(false);  // Impostato come non occupato di default
+        parkingSpot.setReserved(false);  // Impostato come non riservato di default
+        parkingSpot.setLastUpdated(LocalDateTime.now());  // Impostazione del timestamp di aggiornamento
+
+        // Salvataggio del posto nel database
+        return parkingSpotRepository.save(parkingSpot);
+    }
+
+    /**
+     * Update a parking spot.
+     */
+    public ParkingSpot updateParkingSpot(Long id, ParkingSpot parkingSpot) {
+        ParkingSpot existingSpot = getParkingSpotById(id);
+        if (parkingSpot.getSpotNumber() != null && 
+                !parkingSpot.getSpotNumber().equals(existingSpot.getSpotNumber())) {
+            if (parkingSpotRepository.existsBySpotNumber(parkingSpot.getSpotNumber())) {
+                throw new BadRequestException("Spot number is already in use");
+            }
+            existingSpot.setSpotNumber(parkingSpot.getSpotNumber());
+        }
+        existingSpot.setChargingAvailable(parkingSpot.isChargingAvailable());
+        existingSpot.setLastUpdated(LocalDateTime.now());
+        return parkingSpotRepository.save(existingSpot);
+    }
+    
+    /**
+     * Delete a parking spot.
+     */
+    public void deleteParkingSpot(Long id) {
+        ParkingSpot spot = getParkingSpotById(id);
+        if (spot.isOccupied() || spot.isReserved()) {
+            throw new BadRequestException("Cannot delete an occupied or reserved parking spot");
+        }
+        if (reservationRepository.existsByParkingSpotId(id)) {
+            throw new BadRequestException("Cannot delete a parking spot with reservations");
+        }
+        if (chargingRequestRepository.existsByParkingSpotId(id)) {
+            throw new BadRequestException("Cannot delete a parking spot with charging requests");
+        }
+        parkingSpotRepository.deleteById(id);
+    }
+    
+    /**
+     * Mark a parking spot as free.
+     */
+    public ParkingSpot markSpotAsFree(Long parkingSpotId) {
+        ParkingSpot spot = getParkingSpotById(parkingSpotId);
+        spot.setOccupied(false);
+        spot.setReserved(false);
+        spot.setOccupiedSince(null);
+        spot.setLastUpdated(LocalDateTime.now());
+        notificationService.sendParkingSpotStatusNotification(parkingSpotId, "FREE");
+        return parkingSpotRepository.save(spot);
+    }
+    
+    /**
+     * Mark a parking spot as occupied.
+     */
+    public ParkingSpot markSpotAsOccupied(Long parkingSpotId) {
+        ParkingSpot spot = getParkingSpotById(parkingSpotId);
+        spot.setOccupied(true);
+        spot.setOccupiedSince(LocalDateTime.now()); // Assicurati che questo venga impostato
+        spot.setLastUpdated(LocalDateTime.now());
+        notificationService.sendParkingSpotStatusNotification(parkingSpotId, "OCCUPIED");
+        return parkingSpotRepository.save(spot);
+    }
+    /**
+     * Mark a parking spot as reserved.
+     */
+    public ParkingSpot markSpotAsReserved(Long parkingSpotId) {
+        ParkingSpot spot = getParkingSpotById(parkingSpotId);
+        spot.setReserved(true);
+        spot.setLastUpdated(LocalDateTime.now());
+        notificationService.sendParkingSpotStatusNotification(parkingSpotId, "RESERVED");
+        return parkingSpotRepository.save(spot);
+    }
+    
+    /**
+     * Mark a parking spot as not reserved.
+     */
+    public ParkingSpot markSpotAsNotReserved(Long parkingSpotId) {
+        ParkingSpot spot = getParkingSpotById(parkingSpotId);
+        spot.setReserved(false);
+        spot.setLastUpdated(LocalDateTime.now());
+        notificationService.sendParkingSpotStatusNotification(parkingSpotId, "AVAILABLE");
+        return parkingSpotRepository.save(spot);
+    }
+    
+    /**
+     * Get parking spot occupancy statistics.
+     */
+    public Object getParkingOccupancyStats() {
+        List<ParkingSpot> allSpots = getAllParkingSpots();
+        int totalSpots = allSpots.size();
+        int occupiedSpots = (int) allSpots.stream().filter(ParkingSpot::isOccupied).count();
+        int reservedSpots = (int) allSpots.stream().filter(ParkingSpot::isReserved).count();
+        int availableSpots = totalSpots - (occupiedSpots + reservedSpots);
+        int chargingSpots = (int) allSpots.stream().filter(ParkingSpot::isChargingAvailable).count();
+        
+        return new Object() {
+            public final int total = totalSpots;
+            public final int occupied = occupiedSpots;
+            public final int reserved = reservedSpots;
+            public final int available = availableSpots;
+            public final int charging = chargingSpots;
+            public final double occupancyRate = totalSpots > 0 ? (double)(occupiedSpots + reservedSpots) / totalSpots * 100 : 0;
+        };
+    }
+    
+    /**
+     * Find available parking spots for a given time range.
+     * Utilizza il metodo custom definito in ReservationRepository per controllare le prenotazioni in sovrapposizione.
+     */
+    public List<ParkingSpot> findAvailableSpots(LocalDateTime startTime, LocalDateTime endTime, boolean chargingRequired) {
+        List<ParkingSpot> allSpots = getAllParkingSpots();
+        return allSpots.stream().filter(spot -> {
+            // Se è richiesta la ricarica, il posto deve supportarla
+            if (chargingRequired && !spot.isChargingAvailable()) {
+                return false;
+            }
+            // Se il posto è occupato, non è disponibile
+            if (spot.isOccupied()) {
+                return false;
+            }
+            // Verifica se ci sono prenotazioni che si sovrappongono
+            // Utilizza il metodo findOverlappingReservations del repository e controlla se la lista è vuota
+            boolean hasOverlappingReservation = !reservationRepository.findOverlappingReservations(
+                spot.getId(), 
+                startTime, 
+                endTime, 
+                List.of(Reservation.Status.CONFIRMED)
+            ).isEmpty();
+            return !hasOverlappingReservation;
+        }).collect(Collectors.toList());
+    }
+}

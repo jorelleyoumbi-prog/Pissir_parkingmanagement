@@ -1,0 +1,93 @@
+# Informazioni applicazione
+spring:
+  application:
+    name: iot-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/parkingdb?useSSL=false&serverTimezone=UTC
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    open-in-view: false
+
+# Server
+server:
+  port: 8082
+
+# Configurazione MQTT
+mqtt:
+  enabled: true
+  broker:
+    url: tcp://localhost:1883
+  client:
+    id: iot-service-client
+  topic:
+    prefix: parkingsystem
+  reconnect:
+    delay: 5000
+    max-reconnect-attempts: 12
+  connection:
+    timeout: 10
+  keep:
+    alive:
+      interval: 60
+
+# Configurazione MWbot
+mwbot:
+  charging:
+    rate:
+      kw: 11.0
+  low:
+    battery:
+      threshold: 20
+  maintenance:
+    check:
+      interval: 300000
+
+# Configurazione parcheggio
+parking:
+  hourly:
+    rate: 3.0
+  currency: EUR
+  reservation:
+    max-duration:
+      hours: 24
+    tolerance:
+      minutes: 30
+
+charging:
+  rate:
+    per:
+      kwh: 0.35
+
+# Configurazione notifiche
+notification:
+  enabled: true
+  retry:
+    count: 3
+    delay: 5000
+
+# Configurazione logging
+logging:
+  level:
+    root: INFO
+    com:
+      parkingsystem: DEBUG
+    org:
+      springframework: WARN
+      hibernate: WARN
+  file:
+    name: logs/iot-service.log
+    max-size: 10MB
+    max-history: 30
+
+# Configurazione sicurezza
+jwt:
+  secret: your-secret-key-for-jwt-should-be-at-least-256-bits-long-for-security
+  expiration: 86400000

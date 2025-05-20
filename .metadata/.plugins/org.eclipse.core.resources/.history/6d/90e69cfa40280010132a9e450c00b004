@@ -1,0 +1,84 @@
+package com.parkingsystem.backend.service;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.backend.model.ChargingRequest;
+import com.parkingsystem.backend.model.ChargingRequest.ChargingStatus;
+import com.parkingsystem.backend.model.MWbot;
+import com.parkingsystem.backend.model.MWbot.BotStatus;
+import com.parkingsystem.backend.repository.ChargingRequestRepository;
+import com.parkingsystem.backend.repository.MWbotRepository;
+import com.parkingsystem.mqtt.MqttPublisherInterface;
+
+import jakarta.annotation.PostConstruct;
+
+@Service
+public class ChargingSchedulerService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChargingSchedulerService.class);
+
+    @Autowired
+    private ChargingRequestRepository chargingRequestRepository;
+
+    @Autowired
+    private MWbotRepository mwbotRepository;
+
+    @Autowired
+    private MqttPublisherInterface mqttPublisher;
+
+    @PostConstruct
+    public void init() {
+        log.info("ChargingSchedulerService initialized. MWbot auto-assignment will run every 30s");
+    }
+
+    @Scheduled(fixedRate = 30000)
+    public void assignMWbotToChargingRequests() {
+        log.info("[Scheduler] Looking for MWbot and charging request to process...");
+
+        List<ChargingRequest> queue = chargingRequestRepository.findNextInQueue();
+        if (queue.isEmpty()) {
+            log.info("[Scheduler] No pending charging requests in queue.");
+            return;
+        }
+        ChargingRequest request = queue.get(0);
+
+        Optional<MWbot> availableBotOpt = mwbotRepository.findFirstByStatusAndMaintenanceRequiredFalseAndBatteryLevelGreaterThan(
+                BotStatus.AVAILABLE, 20);
+
+        if (availableBotOpt.isEmpty()) {
+            log.info("[Scheduler] No available MWbot with sufficient battery.");
+            return;
+        }
+
+        MWbot bot = availableBotOpt.get();
+
+        // Assegna MWbot alla richiesta
+        bot.setStatus(BotStatus.BUSY);
+        bot.setCurrentChargingRequest(request);
+        mwbotRepository.save(bot);
+
+        request.setStatus(ChargingStatus.IN_PROGRESS);
+        request.setMwbot(bot);
+        chargingRequestRepository.save(request);
+
+        // Costruisci il messaggio MQTT da inviare al bot
+        String topic = "mwbot/command/" + bot.getId();
+        Map<String, Object> payload = Map.of(
+                "action", "start_charging",
+                "requestId", request.getId(),
+                "spotId", request.getParkingSpot().getId(),
+                "target", request.getTargetPercentage()
+        );
+
+        mqttPublisher.publish(topic, payload);
+        log.info("[Scheduler] Assigned MWbot {} to charging request {} and sent MQTT command.", bot.getId(), request.getId());
+    }
+}

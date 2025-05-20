@@ -1,0 +1,46 @@
+package com.parkingsystem.mqtt;
+
+import java.util.Map;
+
+/**
+ * Interface for MQTT publisher
+ */
+public interface MqttPublisherInterface {
+
+    /**
+     * Publish a message
+     * @param topic The topic
+     * @param payload The payload
+     */
+    void publish(String topic, Map<String, Object> payload);
+
+    /**
+     * Publish a message
+     * @param topic The topic
+     * @param payload The payload as string
+     */
+    void publish(String topic, String payload);
+
+    /**
+     * Publish a message with generic Object payload
+     * @param topic The topic
+     * @param payload The payload as an Object
+     */
+    void publish(String topic, Object payload);
+
+    /**
+     * Connect to MQTT broker
+     */
+    void connect();
+
+    /**
+     * Disconnect from MQTT broker
+     */
+    void disconnect();
+
+    /**
+     * Check if connected
+     * @return True if connected
+     */
+    boolean isConnected();
+}

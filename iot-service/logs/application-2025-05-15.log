@@ -1,0 +1,4 @@
+2025-05-15 12:52:56.644 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.5 with PID 8940 (C:\Users\Dylan\Desktop\sp01\iot-service\target\classes started by Dylan in C:\Users\Dylan\Desktop\sp01\iot-service)
+2025-05-15 12:52:56.646 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-05-15 12:52:56.647 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-05-15 12:52:58.024 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 1.784 seconds (process running for 2.701)

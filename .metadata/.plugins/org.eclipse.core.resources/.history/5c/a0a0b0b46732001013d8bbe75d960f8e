@@ -1,0 +1,101 @@
+package com.parkingsystem.backend.service;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+/**
+ * Service per inviare notifiche all'IoT Gateway.
+ */
+@Service
+public class MqttPublisherService {
+
+    private static final Logger logger = LoggerFactory.getLogger(MqttPublisherService.class);
+    
+    @Value("${iot.service.url:http://localhost:8081/api/v1/iot}")
+    private String iotServiceUrl;
+    
+    private final RestTemplate restTemplate = new RestTemplate();
+    
+    /**
+     * Pubblica un comando per iniziare una ricarica tramite l'iot-service
+     */
+    public void publishChargingCommand(String botId, Long chargingRequestId, String parkingSpotId, int targetPercentage) {
+        try {
+            Map<String, Object> payload = Map.of(
+                "botId", botId,
+                "requestId", chargingRequestId,
+                "parkingSpotId", parkingSpotId,
+                "targetPercentage", targetPercentage,
+                "command", "START_CHARGING",
+                "timestamp", LocalDateTime.now().toString()
+            );
+            
+            sendToIotService("/publish/mwbot/" + botId + "/command", payload);
+            
+            logger.info("Published charging command for bot {} and request {}", botId, chargingRequestId);
+        } catch (Exception e) {
+            logger.error("Error publishing charging command: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Pubblica un comando per fermare una ricarica tramite l'iot-service
+     */
+    public void publishStopChargingCommand(String botId, Long chargingRequestId) {
+        try {
+            Map<String, Object> payload = Map.of(
+                "botId", botId,
+                "requestId", chargingRequestId,
+                "command", "STOP_CHARGING",
+                "timestamp", LocalDateTime.now().toString()
+            );
+            
+            sendToIotService("/publish/mwbot/" + botId + "/command", payload);
+            
+            logger.info("Published stop charging command for bot {} and request {}", botId, chargingRequestId);
+        } catch (Exception e) {
+            logger.error("Error publishing stop charging command: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Pubblica una notifica per l'utente tramite l'iot-service
+     */
+    public void publishUserNotification(Long userId, String message, String type) {
+        try {
+            Map<String, Object> payload = Map.of(
+                "userId", userId,
+                "message", message,
+                "type", type,
+                "timestamp", LocalDateTime.now().toString()
+            );
+            
+            sendToIotService("/publish/notification/user/" + userId, payload);
+            
+            logger.info("Published notification for user {}: {}", userId, message);
+        } catch (Exception e) {
+            logger.error("Error publishing notification: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Invia richiesta all'iot-service
+     */
+    private void sendToIotService(String path, Map<String, Object> payload) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+        
+        restTemplate.postForEntity(iotServiceUrl + path, request, Map.class);
+    }
+}

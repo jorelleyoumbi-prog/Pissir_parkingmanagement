@@ -1,0 +1,213 @@
+package com.parkingsystem.controller;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.parkingsystem.config.MqttProperties;
+import com.parkingsystem.mqtt.MqttOutboundGateway;
+
+@RestController
+@RequestMapping("/api/v1/iot")
+public class IoTController {
+	
+    private static final Logger logger = LoggerFactory.getLogger(IoTController.class);
+
+
+    private final MqttOutboundGateway mqttGateway;
+    private final MqttProperties props;
+    private final ObjectMapper objectMapper;
+
+    public IoTController(
+            MqttOutboundGateway mqttGateway,
+            MqttProperties props,
+            ObjectMapper objectMapper
+    ) {
+        this.mqttGateway  = mqttGateway;
+        this.props        = props;
+        this.objectMapper = objectMapper;
+    }
+
+    private String toJson(Object payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            logger.error("Error serializing to JSON", e);
+            throw new RuntimeException("Error serializing to JSON: " + e.getMessage(), e);
+        }
+    }
+
+    @PostMapping("/simulate/car-arrival")
+    public ResponseEntity<?> simulateCarArrival(@RequestBody Map<String, Object> data) {
+        try {
+            String carId = data.getOrDefault("carId", "CAR-" + Math.round(Math.random() * 1000)).toString();
+            var payload = Map.of(
+                "carId",     carId,
+                "timestamp", LocalDateTime.now().toString()
+            );
+            mqttGateway.sendToMqtt(props.getTopics().getRequest(), toJson(payload));
+            logger.info("Simulated car arrival: {}", carId);
+            return ResponseEntity.ok(Map.of(
+                "message", "Car arrival simulated",
+                "carId",   carId
+            ));
+        } catch (Exception e) {
+            logger.error("Error simulating car arrival", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to simulate car arrival: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/simulate/car-exit")
+    public ResponseEntity<?> simulateCarExit(@RequestBody Map<String, Object> data) {
+        String carId = data.getOrDefault("carId", "CAR-" + Math.round(Math.random() * 1000)).toString();
+        var payload = Map.of(
+            "carId",     carId,
+            "timestamp", LocalDateTime.now().toString()
+        );
+        mqttGateway.sendToMqtt(props.getTopics().getRequest(), toJson(payload));
+        return ResponseEntity.ok(Map.of(
+            "message", "Car exit simulated",
+            "carId",   carId
+        ));
+    }
+
+    @PostMapping("/simulate/spot-status/{spotId}")
+    public ResponseEntity<?> simulateSpotStatusChange(
+            @PathVariable String spotId,
+            @RequestBody Map<String, Object> data) {
+
+        String status = data.getOrDefault("status", "occupied").toString();
+        if (!status.equals("occupied") && !status.equals("free")) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Status must be 'occupied' or 'free'"));
+        }
+
+        var payload = Map.of(
+            "spotId",    spotId,
+            "status",    status,
+            "timestamp", LocalDateTime.now().toString()
+        );
+        mqttGateway.sendToMqtt(props.getTopics().getRequest(), toJson(payload));
+        return ResponseEntity.ok(Map.of(
+            "message", "Spot status simulated",
+            "spotId",  spotId,
+            "status",  status
+        ));
+    }
+
+    @PostMapping("/simulate/mwbot-status/{botId}")
+    public ResponseEntity<?> simulateMWbotStatusChange(
+            @PathVariable String botId,
+            @RequestBody Map<String, Object> data) {
+
+        String status = data.getOrDefault("status", "AVAILABLE").toString();
+        int batteryLevel = Integer.parseInt(data.getOrDefault("batteryLevel", "100").toString());
+
+        var payload = Map.of(
+            "botId",        botId,
+            "status",       status,
+            "batteryLevel", batteryLevel,
+            "timestamp",    LocalDateTime.now().toString()
+        );
+        mqttGateway.sendToMqtt(props.getTopics().getRequest(), toJson(payload));
+        return ResponseEntity.ok(Map.of(
+            "message", "MWbot status simulated",
+            "botId",   botId,
+            "status",  status
+        ));
+    }
+
+    @PostMapping("/simulate/charging-progress/{requestId}")
+    public ResponseEntity<?> simulateChargingProgress(
+            @PathVariable String requestId,
+            @RequestBody Map<String, Object> data) {
+
+        int percentage = Integer.parseInt(data.getOrDefault("percentage", "50").toString());
+        if (percentage < 0 || percentage > 100) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Percentage must be between 0 and 100"));
+        }
+
+        var payload = Map.of(
+            "requestId",        requestId,
+            "currentPercentage", percentage,
+            "timestamp",         LocalDateTime.now().toString()
+        );
+        mqttGateway.sendToMqtt(props.getTopics().getRequest(), toJson(payload));
+        return ResponseEntity.ok(Map.of(
+            "message",    "Charging progress simulated",
+            "requestId",  requestId,
+            "percentage", percentage
+        ));
+    }
+
+    @PostMapping("/simulate/charging-completion/{requestId}")
+    public ResponseEntity<?> simulateChargingCompletion(
+            @PathVariable String requestId,
+            @RequestBody Map<String, Object> data) {
+
+        int finalPercentage = Integer.parseInt(data.getOrDefault("finalPercentage", "100").toString());
+        if (finalPercentage < 0 || finalPercentage > 100) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Final percentage must be between 0 and 100"));
+        }
+
+        var payload = Map.of(
+            "requestId",     requestId,
+            "status",        "COMPLETED",
+            "finalPercentage", finalPercentage,
+            "timestamp",     LocalDateTime.now().toString()
+        );
+        mqttGateway.sendToMqtt(props.getTopics().getRequest(), toJson(payload));
+        return ResponseEntity.ok(Map.of(
+            "message",   "Charging completion simulated",
+            "requestId", requestId
+        ));
+    }
+    
+    /**
+     * Endpoint per permettere al backend di pubblicare messaggi MQTT
+     */
+    @PostMapping("/publish/{topic:.*}")
+    public ResponseEntity<?> publishMessage(
+            @PathVariable String topic,
+            @RequestBody Map<String, Object> payload) {
+        try {
+            // Converte la payload in JSON
+            String json = objectMapper.writeValueAsString(payload);
+            
+            // Pubblica il messaggio MQTT
+            mqttGateway.sendToMqtt(topic, json);
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "Message published",
+                "topic", topic
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to publish message: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Endpoint per controllare lo stato di salute del servizio
+     */
+    @GetMapping("/health")
+    public ResponseEntity<?> healthCheck() {
+        return ResponseEntity.ok(Map.of(
+            "status", "UP",
+            "timestamp", LocalDateTime.now().toString(),
+            "service", "iot-service"
+        ));
+    }
+}

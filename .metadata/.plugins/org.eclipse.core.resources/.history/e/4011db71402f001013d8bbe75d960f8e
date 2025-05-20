@@ -1,0 +1,127 @@
+package com.parkingsystem.config;
+
+import java.util.List;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import com.parkingsystem.backend.util.JwtUtil;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true)
+public class SecurityConfig {
+
+    private final UserDetailsService userDetailsService;
+    private final JwtUtil jwtUtil;
+    private final AccessDeniedHandler accessDeniedHandler;
+
+    public SecurityConfig(UserDetailsService uds,
+                          JwtUtil jwtUtil,
+                          AccessDeniedHandler adh) {
+        this.userDetailsService = uds;
+        this.jwtUtil            = jwtUtil;
+        this.accessDeniedHandler = adh;
+    }
+
+    // 1) Password encoder Bean
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    // 2) AuthenticationProvider con BCrypt
+    @Bean
+    public DaoAuthenticationProvider authProvider(PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+        return provider;
+    }
+
+    // 3) Manager per l’autenticazione
+    @Bean
+    public AuthenticationManager authenticationManager(HttpSecurity http,
+                                                       DaoAuthenticationProvider authProvider) throws Exception {
+        return http
+            .getSharedObject(org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder.class)
+            .authenticationProvider(authProvider)
+            .build();
+    }
+
+    // 4) Filtro JWT
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        return new JwtAuthenticationFilter(jwtUtil, userDetailsService);
+    }
+
+    // 5) Configurazione CORS centralizzata
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration cfg = new CorsConfiguration();
+        cfg.setAllowedOrigins(List.of("http://localhost:8080"));    // frontend URL
+        cfg.setAllowedMethods(List.of(
+            HttpMethod.GET.name(),
+            HttpMethod.POST.name(),
+            HttpMethod.PUT.name(),
+            HttpMethod.PATCH.name(),
+            HttpMethod.DELETE.name(),
+            HttpMethod.OPTIONS.name()
+        ));
+        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
+        src.registerCorsConfiguration("/**", cfg);
+        return src;
+    }
+
+    // 6) SecurityFilterChain: la vera configurazione delle regole
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+          // Disabilitiamo CSRF per API stateless
+          .csrf(AbstractHttpConfigurer::disable)
+          // Applichiamo il CORS definito sopra
+          .cors(Customizer.withDefaults())
+          // Sessione stateless: JWT
+          .sessionManagement(sm -> sm
+              .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+          // Exception handling personalizzato
+          .exceptionHandling(eh -> eh
+              .accessDeniedHandler(accessDeniedHandler))
+          // Regole di autorizzazione
+          .authorizeHttpRequests(authz -> authz
+              // endpoint pubblici
+              .requestMatchers("/api/auth/**").permitAll()
+              // amministrazione
+              .requestMatchers("/api/admin/**").hasRole("ADMIN")
+              // area premium
+              .requestMatchers("/api/premium/**").hasAnyRole("PREMIUM_USER","ADMIN")
+              // tutto il resto autenticato
+              .anyRequest().authenticated())
+          // Inseriamo il filtro JWT *prima* dello UsernamePasswordAuthenticationFilter
+          .addFilterBefore(jwtAuthenticationFilter(),
+                           UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+}

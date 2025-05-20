@@ -1,0 +1,176 @@
+package com.parkingsystem.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import com.parkingsystem.exception.BadRequestException;
+import com.parkingsystem.exception.ResourceNotFoundException;
+import com.parkingsystem.model.ParkingSpot;
+import com.parkingsystem.model.Reservation;
+import com.parkingsystem.repository.ChargingRequestRepository;
+import com.parkingsystem.repository.ParkingSpotRepository;
+import com.parkingsystem.repository.ReservationRepository;
+
+@Service
+public class ParkingService {
+
+    @Autowired
+    private ParkingSpotRepository parkingSpotRepository;
+
+    @Autowired
+    private ReservationRepository reservationRepository;
+
+    @Autowired
+    private ChargingRequestRepository chargingRequestRepository;
+
+    @Autowired
+    private NotificationService notificationService;
+
+    public List<ParkingSpot> getAllParkingSpots() {
+        return parkingSpotRepository.findAll();
+    }
+
+    public ParkingSpot getParkingSpotById(Long id) {
+        return parkingSpotRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Parking spot not found with id: " + id));
+    }
+
+    public ParkingSpot getParkingSpotByNumber(String spotNumber) {
+        return parkingSpotRepository.findBySpotNumber(spotNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Parking spot not found with number: " + spotNumber));
+    }
+
+    public List<ParkingSpot> getAvailableParkingSpots(boolean chargingRequired, LocalDateTime startTime, LocalDateTime endTime) {
+        return findAvailableSpots(startTime, endTime, chargingRequired);
+    }
+
+    public List<ParkingSpot> getChargingSpots() {
+        return parkingSpotRepository.findByChargingAvailableTrue();
+    }
+
+    public List<ParkingSpot> getAvailableChargingSpots(LocalDateTime startTime, LocalDateTime endTime) {
+        return findAvailableSpots(startTime, endTime, true);
+    }
+
+    public ParkingSpot createParkingSpot(ParkingSpot parkingSpot) {
+        if (parkingSpot.getSpotNumber() == null || parkingSpot.getSpotNumber().trim().isEmpty()) {
+            throw new BadRequestException("Spot number is required");
+        }
+
+        if (parkingSpotRepository.existsBySpotNumber(parkingSpot.getSpotNumber())) {
+            throw new BadRequestException("Spot number is already in use");
+        }
+
+        parkingSpot.setOccupied(false);
+        parkingSpot.setReserved(false);
+        parkingSpot.setLastUpdated(LocalDateTime.now());
+
+        return parkingSpotRepository.save(parkingSpot);
+    }
+
+    public ParkingSpot updateParkingSpot(Long id, ParkingSpot parkingSpot) {
+        ParkingSpot existingSpot = getParkingSpotById(id);
+        if (parkingSpot.getSpotNumber() != null &&
+                !parkingSpot.getSpotNumber().equals(existingSpot.getSpotNumber())) {
+            if (parkingSpotRepository.existsBySpotNumber(parkingSpot.getSpotNumber())) {
+                throw new BadRequestException("Spot number is already in use");
+            }
+            existingSpot.setSpotNumber(parkingSpot.getSpotNumber());
+        }
+        existingSpot.setChargingAvailable(parkingSpot.isChargingAvailable());
+        existingSpot.setLastUpdated(LocalDateTime.now());
+        return parkingSpotRepository.save(existingSpot);
+    }
+
+    public void deleteParkingSpot(Long id) {
+        ParkingSpot spot = getParkingSpotById(id);
+        if (spot.isOccupied() || spot.isReserved()) {
+            throw new BadRequestException("Cannot delete an occupied or reserved parking spot");
+        }
+        if (reservationRepository.existsByParkingSpotId(id)) {
+            throw new BadRequestException("Cannot delete a parking spot with reservations");
+        }
+        if (chargingRequestRepository.existsByParkingSpotId(id)) {
+            throw new BadRequestException("Cannot delete a parking spot with charging requests");
+        }
+        parkingSpotRepository.deleteById(id);
+    }
+
+    public ParkingSpot markSpotAsFree(Long parkingSpotId) {
+        ParkingSpot spot = getParkingSpotById(parkingSpotId);
+        spot.setOccupied(false);
+        spot.setReserved(false);
+        spot.setOccupiedSince(null);
+        spot.setLastUpdated(LocalDateTime.now());
+        notificationService.sendParkingSpotStatusNotification(parkingSpotId, "FREE");
+        return parkingSpotRepository.save(spot);
+    }
+
+    public ParkingSpot markSpotAsOccupied(Long parkingSpotId) {
+        ParkingSpot spot = getParkingSpotById(parkingSpotId);
+        spot.setOccupied(true);
+        spot.setOccupiedSince(LocalDateTime.now());
+        spot.setLastUpdated(LocalDateTime.now());
+        notificationService.sendParkingSpotStatusNotification(parkingSpotId, "OCCUPIED");
+        return parkingSpotRepository.save(spot);
+    }
+
+    public ParkingSpot markSpotAsReserved(Long parkingSpotId) {
+        ParkingSpot spot = getParkingSpotById(parkingSpotId);
+        spot.setReserved(true);
+        spot.setLastUpdated(LocalDateTime.now());
+        notificationService.sendParkingSpotStatusNotification(parkingSpotId, "RESERVED");
+        return parkingSpotRepository.save(spot);
+    }
+
+    public ParkingSpot markSpotAsNotReserved(Long parkingSpotId) {
+        ParkingSpot spot = getParkingSpotById(parkingSpotId);
+        spot.setReserved(false);
+        spot.setLastUpdated(LocalDateTime.now());
+        notificationService.sendParkingSpotStatusNotification(parkingSpotId, "AVAILABLE");
+        return parkingSpotRepository.save(spot);
+    }
+
+    public Object getParkingOccupancyStats() {
+        List<ParkingSpot> allSpots = getAllParkingSpots();
+        int totalSpots = allSpots.size();
+        int occupiedSpots = (int) allSpots.stream().filter(ParkingSpot::isOccupied).count();
+        int reservedSpots = (int) allSpots.stream().filter(ParkingSpot::isReserved).count();
+        int availableSpots = totalSpots - (occupiedSpots + reservedSpots);
+        int chargingSpots = (int) allSpots.stream().filter(ParkingSpot::isChargingAvailable).count();
+
+        return new Object() {
+            public final int total = totalSpots;
+            public final int occupied = occupiedSpots;
+            public final int reserved = reservedSpots;
+            public final int available = availableSpots;
+            public final int charging = chargingSpots;
+            public final double occupancyRate = totalSpots > 0
+                    ? (double) (occupiedSpots + reservedSpots) / totalSpots * 100
+                    : 0;
+        };
+    }
+
+    public List<ParkingSpot> findAvailableSpots(LocalDateTime startTime, LocalDateTime endTime, boolean chargingRequired) {
+        List<ParkingSpot> allSpots = getAllParkingSpots();
+        return allSpots.stream().filter(spot -> {
+            if (chargingRequired && !spot.isChargingAvailable()) {
+                return false;
+            }
+            if (spot.isOccupied()) {
+                return false;
+            }
+            boolean hasOverlappingReservation = !reservationRepository.findOverlappingReservations(
+                    spot.getId(),
+                    startTime,
+                    endTime,
+                    List.of(Reservation.Status.CONFIRMED)
+            ).isEmpty();
+            return !hasOverlappingReservation;
+        }).collect(Collectors.toList());
+    }
+}

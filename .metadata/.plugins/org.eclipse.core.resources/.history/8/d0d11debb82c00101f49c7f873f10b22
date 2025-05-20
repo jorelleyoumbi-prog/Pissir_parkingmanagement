@@ -1,0 +1,51 @@
+package com.parkingsystem.model;
+
+import java.time.LocalDateTime;
+
+import jakarta.persistence.*;
+
+import lombok.Getter;
+import lombok.Setter;
+
+@Entity
+@Table(name = "charging_requests")
+@Getter
+@Setter
+public class ChargingRequest {
+
+    public enum ChargingStatus {
+        PENDING,
+        QUEUED,
+        IN_PROGRESS,
+        COMPLETED
+    }
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    @ManyToOne
+    @JoinColumn(name = "parking_spot_id")
+    private ParkingSpot parkingSpot;
+
+    private Integer initialPercentage;
+    private Integer targetPercentage;
+    private Integer currentPercentage;
+    private Integer queuePosition;
+
+    @Enumerated(EnumType.STRING)
+    private ChargingStatus status;
+
+    private LocalDateTime chargingStartTime;
+    private LocalDateTime chargingCompletionTime;
+    private LocalDateTime estimatedCompletionTime;
+
+    private Double totalEnergyKwh;
+
+    private boolean notificationRequested;
+    private boolean notificationSent;
+}

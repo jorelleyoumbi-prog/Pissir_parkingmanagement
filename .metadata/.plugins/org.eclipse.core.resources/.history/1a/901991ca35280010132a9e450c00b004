@@ -1,0 +1,130 @@
+package com.parkingsystem.backend.controller;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.parkingsystem.backend.dto.ParkingSpotDto;
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.model.ParkingSpot;
+import com.parkingsystem.service.ParkingService;
+
+/**
+ * Controller per le operazioni relative ai posti auto
+ */
+@RestController
+@RequestMapping("/api/parking")
+public class ParkingController {
+
+    @Autowired
+    private ParkingService parkingService;
+    
+    /**
+     * Ottieni tutti i posti auto
+     * @return Risposta con tutti i posti auto
+     */
+    @GetMapping("/spots")
+    public ResponseEntity<?> getAllParkingSpots() {
+        try {
+            // Ottieni tutti i posti auto dal servizio
+            List<ParkingSpot> spots = parkingService.getAllParkingSpots();
+            // Converte i posti auto in DTO
+            List<ParkingSpotDto> spotDtos = spots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(spotDtos);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    
+    /**
+     * Ottieni un posto auto per ID
+     * @param id L'ID del posto auto
+     * @return Risposta con il posto auto
+     */
+    @GetMapping("/spots/{id}")
+    public ResponseEntity<?> getParkingSpot(@PathVariable Long id) {
+        try {
+            // Ottieni il posto auto dal servizio
+            ParkingSpot spot = parkingService.getParkingSpotById(id);
+            return ResponseEntity.ok(convertToDto(spot));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Trova i posti auto disponibili in un intervallo di tempo
+     * @param startTime L'orario di inizio
+     * @param endTime L'orario di fine
+     * @param chargingRequired Se è richiesta la ricarica
+     * @return Risposta con i posti auto disponibili
+     */
+    @GetMapping("/availability")
+    public ResponseEntity<?> findAvailableSpots(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "false") boolean chargingRequired) {
+        
+        try {
+            // Ottieni i posti auto disponibili nel periodo richiesto
+            List<ParkingSpot> availableSpots = parkingService.findAvailableSpots(startTime, endTime, chargingRequired);
+            // Converte i posti auto disponibili in DTO
+            List<ParkingSpotDto> spotDtos = availableSpots.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(spotDtos);
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Errore nel trovare i posti auto disponibili: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Converte un posto auto in DTO
+     * @param parkingSpot Il posto auto
+     * @return Il DTO del posto auto
+     */
+    private ParkingSpotDto convertToDto(ParkingSpot parkingSpot) {
+        ParkingSpotDto dto = new ParkingSpotDto();
+        
+        dto.setId(parkingSpot.getId());
+        dto.setSpotNumber(parkingSpot.getSpotNumber());
+        dto.setOccupied(parkingSpot.isOccupied());
+        dto.setReserved(parkingSpot.isReserved());
+        dto.setChargingAvailable(parkingSpot.isChargingAvailable());
+        
+        return dto;
+    }
+    
+    @PutMapping("/api/parking/spots/{spotId}")
+    public ResponseEntity<ParkingSpot> updateParkingSpot(@PathVariable Long spotId, @RequestBody ParkingSpot spot) {
+        ParkingSpot updatedSpot = parkingService.updateParkingSpot(spotId, spot);
+        if (updatedSpot == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+        return ResponseEntity.ok(updatedSpot);
+    }
+
+}

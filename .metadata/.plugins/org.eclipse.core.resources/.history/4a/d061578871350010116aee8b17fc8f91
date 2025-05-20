@@ -1,0 +1,19 @@
+# Server
+server.port=8082
+spring.application.name=frontend-service
+
+# Backend Service URL
+backend.url=http://localhost:8080/api
+
+# Thymeleaf
+spring.thymeleaf.cache=false
+spring.thymeleaf.prefix=classpath:/templates/
+spring.thymeleaf.suffix=.html
+
+# Session
+server.servlet.session.timeout=30m
+
+# Logging
+logging.level.root=INFO
+logging.level.com.parkingsystem=DEBUG
+logging.level.org.springframework.web=INFO

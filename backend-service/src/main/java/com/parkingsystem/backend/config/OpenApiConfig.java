@@ -1,0 +1,17 @@
+package com.parkingsystem.backend.config;
+
+import org.springdoc.core.models.GroupedOpenApi;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class OpenApiConfig {
+
+    @Bean
+    public GroupedOpenApi publicApi() {
+        return GroupedOpenApi.builder()
+                .group("public")
+                .pathsToMatch("/**") //mettere i path voluti da fare nel caso abbiamo tempo 
+                .build();
+    }
+}

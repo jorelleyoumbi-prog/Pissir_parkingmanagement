@@ -1,0 +1,171 @@
+package com.parkingsystem.backend.controller;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+
+import com.parkingsystem.backend.dto.ParkingSpotDto;
+import com.parkingsystem.backend.dto.ReservationDto;
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.model.Reservation;
+import com.parkingsystem.backend.model.User;
+import com.parkingsystem.backend.service.NotificationService;
+import com.parkingsystem.backend.service.ParkingService;
+import com.parkingsystem.backend.service.ReservationService;
+import com.parkingsystem.backend.service.UserService;
+
+@RestController
+@RequestMapping("/api/premium")
+@PreAuthorize("hasRole('PREMIUM_USER')")
+public class PremiumController {
+
+    @Autowired
+    private UserService userService;
+    
+    @Autowired
+    private ReservationService reservationService;
+    
+    @Autowired
+    private ParkingService parkingService;
+    
+    @Autowired
+    private NotificationService notificationService;
+
+    /**
+     * Controlla la disponibilità dei posti auto in un intervallo di tempo.
+     * I premium possono consultare in anticipo la disponibilità per prenotare.
+     */
+    @GetMapping("/availability")
+    public ResponseEntity<?> checkAvailability(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "false") boolean chargingRequired) {
+        // Validazione dell'intervallo temporale
+        if (startTime.isAfter(endTime)) {
+            throw new BadRequestException("Start time must be before end time");
+        }
+        if (startTime.isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Start time must be in the future");
+        }
+        
+        // Ottieni i posti auto disponibili per il range specificato
+        List<ParkingSpot> availableSpots = parkingService.findAvailableSpots(startTime, endTime, chargingRequired);
+        
+        // Converte ogni posto in un DTO (adattalo se hai già una conversione centralizzata)
+        List<ParkingSpotDto> dtos = availableSpots.stream().map(spot -> {
+            ParkingSpotDto dto = new ParkingSpotDto();
+            dto.setId(spot.getId());
+            dto.setSpotNumber(spot.getSpotNumber());
+            dto.setChargingAvailable(spot.isChargingAvailable());
+
+            return dto;
+        }).collect(Collectors.toList());
+        
+        return ResponseEntity.ok(dtos);
+    }
+    
+    /**
+     * Crea una prenotazione anticipata per un utente premium.
+     * I dati necessari sono:
+     * - parkingSpotId
+     * - startTime (ISO_LOCAL_DATE_TIME)
+     * - endTime (ISO_LOCAL_DATE_TIME)
+     * - chargingRequired (opzionale)
+     */
+    @PostMapping("/reservations")
+    public ResponseEntity<?> createReservation(@RequestBody Map<String, Object> requestBody) {
+        try {
+            // Ottieni l'utente autenticato
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String username = auth.getName();
+            User user = userService.getUserByUsername(username);
+            
+            // Controlla che l'utente abbia effettivamente il ruolo PREMIUM (già garantito da @PreAuthorize, ma per sicurezza)
+            if (user.getRole() != User.UserRole.PREMIUM_USER) {
+                throw new BadRequestException("Only premium users can create advance reservations");
+            }
+            
+            // Estrai i parametri obbligatori
+            if (!requestBody.containsKey("parkingSpotId") ||
+                !requestBody.containsKey("startTime") ||
+                !requestBody.containsKey("endTime")) {
+                throw new BadRequestException("Missing required reservation fields");
+            }
+            
+            Long parkingSpotId = Long.valueOf(requestBody.get("parkingSpotId").toString());
+            LocalDateTime startTime = LocalDateTime.parse(requestBody.get("startTime").toString());
+            LocalDateTime endTime = LocalDateTime.parse(requestBody.get("endTime").toString());
+            boolean chargingRequired = false;
+            if (requestBody.containsKey("chargingRequired")) {
+                chargingRequired = Boolean.parseBoolean(requestBody.get("chargingRequired").toString());
+            }
+            
+            // Crea la prenotazione (il metodo createReservation nel ReservationService dovrà gestire
+            // eventuali controlli specifici per le prenotazioni premium)
+            Reservation reservation = reservationService.createReservation(user.getId(), parkingSpotId, startTime, endTime, chargingRequired);
+            
+            // Invia una notifica di conferma, se desiderato
+            notificationService.sendReservationConfirmationNotification(reservation);
+            
+            // Converti la prenotazione in DTO per la risposta
+            ReservationDto dto = new ReservationDto();
+            dto.setId(reservation.getId());
+            dto.setStartTime(reservation.getStartTime());
+            dto.setEndTime(reservation.getEndTime());
+            dto.setStatus(reservation.getStatus().toString());
+            dto.setChargingRequired(reservation.isChargingRequired());
+            dto.setParkingSpotId(reservation.getParkingSpot().getId());
+            dto.setParkingSpotNumber(reservation.getParkingSpot().getSpotNumber());
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+        } catch (BadRequestException | ResourceNotFoundException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to create reservation: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Recupera tutte le prenotazioni effettuate dall'utente premium.
+     */
+    @GetMapping("/reservations")
+    public ResponseEntity<?> getReservations() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String username = auth.getName();
+            User user = userService.getUserByUsername(username);
+            
+            List<Reservation> reservations = reservationService.getUserReservations(user.getId());
+
+            List<ReservationDto> dtos = reservations.stream().map(reservation -> {
+                ReservationDto dto = new ReservationDto();
+                dto.setId(reservation.getId());
+                dto.setStartTime(reservation.getStartTime());
+                dto.setEndTime(reservation.getEndTime());
+                dto.setStatus(reservation.getStatus().toString());
+                dto.setChargingRequired(reservation.isChargingRequired());
+                dto.setParkingSpotId(reservation.getParkingSpot().getId());
+                dto.setParkingSpotNumber(reservation.getParkingSpot().getSpotNumber());
+                return dto;
+            }).collect(Collectors.toList());
+            
+            return ResponseEntity.ok(dtos);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to retrieve reservations: " + e.getMessage()));
+        }
+    }
+}
