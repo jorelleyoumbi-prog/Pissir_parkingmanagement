@@ -1,0 +1,128 @@
+2025-07-01 14:56:04.054 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 36016 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 14:56:04.060 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 14:56:04.062 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 14:56:06.749 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 1448 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 14:56:06.763 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 14:56:06.768 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 14:56:09.796 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 7.114 seconds (process running for 8.912)
+2025-07-01 14:56:09.812 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-01 14:56:10.499 [restartedMain] WARN  o.s.b.w.r.c.AnnotationConfigReactiveWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2025-07-01 14:56:10.577 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8081 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8081 or configure this application to listen on another port.
+
+2025-07-01 14:57:22.589 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 5644 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 14:57:22.594 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 14:57:22.597 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 14:57:25.868 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-01 14:57:26.794 [restartedMain] WARN  o.s.b.w.r.c.AnnotationConfigReactiveWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2025-07-01 14:57:26.866 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8081 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8081 or configure this application to listen on another port.
+
+2025-07-01 14:58:39.244 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 4732 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 14:58:39.248 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 14:58:39.251 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 14:58:41.717 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-01 14:58:42.474 [restartedMain] WARN  o.s.b.w.r.c.AnnotationConfigReactiveWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2025-07-01 14:58:42.538 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8081 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8081 or configure this application to listen on another port.
+
+2025-07-01 14:59:34.002 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 5132 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 14:59:34.006 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 14:59:34.008 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 14:59:36.697 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-01 14:59:37.447 [restartedMain] WARN  o.s.b.w.r.c.AnnotationConfigReactiveWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2025-07-01 14:59:37.509 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8081 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8081 or configure this application to listen on another port.
+
+2025-07-01 14:59:37.639 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 29336 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 14:59:37.644 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 14:59:37.645 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 14:59:40.119 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-01 14:59:40.805 [restartedMain] WARN  o.s.b.w.r.c.AnnotationConfigReactiveWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2025-07-01 14:59:40.846 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8081 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8081 or configure this application to listen on another port.
+
+2025-07-01 15:12:46.143 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 34284 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 15:12:46.146 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 15:12:46.147 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 15:12:49.001 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-01 15:12:49.687 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 4.497 seconds (process running for 5.933)
+2025-07-01 15:18:25.633 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 25128 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 15:18:25.635 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 15:18:25.636 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 15:18:28.792 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-01 15:18:29.598 [restartedMain] WARN  o.s.b.w.r.c.AnnotationConfigReactiveWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2025-07-01 15:18:29.662 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8081 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8081 or configure this application to listen on another port.
+
+2025-07-01 15:20:27.231 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 27764 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-01 15:20:27.235 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-01 15:20:27.236 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-01 15:20:29.814 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-01 15:20:30.628 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 4.305 seconds (process running for 5.662)

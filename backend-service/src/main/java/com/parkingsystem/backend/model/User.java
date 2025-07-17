@@ -19,6 +19,11 @@ import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+<<<<<<< HEAD
+=======
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+>>>>>>> 3204814 (aggiunta della parking sessions)
 
 /**
  * Entity representing a user of the system
@@ -85,6 +90,10 @@ public class User {
     private Set<ChargingRequest> chargingRequests = new HashSet<>();
     
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
+<<<<<<< HEAD
+=======
+    @JsonIgnore
+>>>>>>> 3204814 (aggiunta della parking sessions)
     private Set<Payment> payments = new HashSet<>();
     
     

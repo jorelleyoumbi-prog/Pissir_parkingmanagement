@@ -17,6 +17,10 @@ public class PaymentDto {
     private Long userId;
     
     private String username;
+<<<<<<< HEAD
+=======
+    private Long parkingSessionsId;  // identifiant de la session de parking associée au payment
+>>>>>>> 3204814 (aggiunta della parking sessions)
     
     public Long getId() {
 		return id;
@@ -37,6 +41,16 @@ public class PaymentDto {
 	public String getUsername() {
 		return username;
 	}
+<<<<<<< HEAD
+=======
+	
+	public Long getParkingSessionsId() {
+		return parkingSessionsId;
+	}
+	public void setParkingSessionsId(Long parkingSessionsId) {
+		this.parkingSessionsId= parkingSessionsId;
+	} //cela permet de transférer l'identifiant de la session de stationnement associée au paiement
+>>>>>>> 3204814 (aggiunta della parking sessions)
 
 	public void setUsername(String username) {
 		this.username = username;
@@ -141,4 +155,9 @@ public class PaymentDto {
     private String paymentMethod;
     
     private String cardLastFour;
+<<<<<<< HEAD
+=======
+    
+
+>>>>>>> 3204814 (aggiunta della parking sessions)
 }

@@ -393,6 +393,12 @@ public class ChargingService {
         request.setNotificationRequested(notify);
         request.setNotificationSent(false);
 
+<<<<<<< HEAD
+=======
+        //  Associer à la même session que la demande originale
+        request.setParkingSessions(original.getParkingSessions());
+
+>>>>>>> 3204814 (aggiunta della parking sessions)
         request = chargingRequestRepository.save(request);
 
         List<ChargingRequest> pending = chargingRequestRepository
@@ -419,4 +425,8 @@ public class ChargingService {
         assignMWbotToNextChargingRequest();
         return request;
     }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 3204814 (aggiunta della parking sessions)
 }

@@ -81,6 +81,13 @@ public class Payment {
     
     @Column(nullable = false)
     private LocalDateTime paymentDate;
+<<<<<<< HEAD
+=======
+    
+    @ManyToOne
+    @JoinColumn(name ="parking_sessions_id")
+    private ParkingSessions parkingSessions;
+>>>>>>> 3204814 (aggiunta della parking sessions)
 
     // Getters and Setters
     public Long getId() {
@@ -178,4 +185,16 @@ public class Payment {
     public void setPaymentDate(LocalDateTime paymentDate) {
         this.paymentDate = paymentDate;
     }
+<<<<<<< HEAD
+=======
+    
+    public ParkingSessions getParkingSessions() {
+    	return parkingSessions;
+    }
+    
+    public void setParkingSessions(ParkingSessions parkingSessions) {
+    	 this.parkingSessions=parkingSessions;
+    }
+    
+>>>>>>> 3204814 (aggiunta della parking sessions)
 }

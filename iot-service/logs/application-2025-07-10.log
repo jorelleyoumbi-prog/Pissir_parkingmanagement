@@ -1,0 +1,55 @@
+2025-07-10 14:12:12.895 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 29704 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-10 14:12:12.909 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-10 14:12:12.912 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-10 14:12:23.142 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 12.94 seconds (process running for 17.481)
+2025-07-10 14:57:01.417 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 12444 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-10 14:57:01.422 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-10 14:57:01.423 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-10 14:57:06.817 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-10 14:57:07.972 [restartedMain] WARN  o.s.b.w.r.c.AnnotationConfigReactiveWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2025-07-10 14:57:08.276 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8081 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8081 or configure this application to listen on another port.
+
+2025-07-10 14:58:21.026 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 35548 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-10 14:58:21.030 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-10 14:58:21.032 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-10 14:58:24.984 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 4.899 seconds (process running for 6.636)
+2025-07-10 15:02:11.808 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 34724 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-10 15:02:11.822 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-10 15:02:11.823 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-10 15:02:18.339 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-10 15:02:19.717 [restartedMain] WARN  o.s.b.w.r.c.AnnotationConfigReactiveWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Failed to start bean 'webServerStartStop'
+2025-07-10 15:02:19.817 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Web server failed to start. Port 8081 was already in use.
+
+Action:
+
+Identify and stop the process that's listening on port 8081 or configure this application to listen on another port.
+
+2025-07-10 15:02:57.782 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 3104 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-10 15:02:57.789 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-10 15:02:57.792 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-10 15:03:01.599 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 4.825 seconds (process running for 6.638)
+2025-07-10 15:21:05.290 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 21192 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-07-10 15:21:05.294 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-07-10 15:21:05.296 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-07-10 15:21:10.012 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-07-10 15:21:11.123 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 7.296 seconds (process running for 9.191)

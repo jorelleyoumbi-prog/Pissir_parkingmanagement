@@ -1,0 +1,9 @@
+2025-06-02 10:46:00.170 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 17148 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-06-02 10:46:00.174 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-06-02 10:46:00.176 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-06-02 10:46:04.789 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 5.666 seconds (process running for 7.401)
+2025-06-02 11:25:12.290 [restartedMain] INFO  c.p.iot.IotServiceApplication - Starting IotServiceApplication using Java 17.0.6 with PID 11200 (C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service\target\classes started by jorel in C:\Users\jorel\OneDrive - Università del Piemonte Orientale\Desktop\pisssiiiiiiir\iot-service)
+2025-06-02 11:25:12.294 [restartedMain] DEBUG c.p.iot.IotServiceApplication - Running with Spring Boot v3.4.5, Spring v6.2.6
+2025-06-02 11:25:12.296 [restartedMain] INFO  c.p.iot.IotServiceApplication - No active profile set, falling back to 1 default profile: "default"
+2025-06-02 11:25:15.457 [restartedMain] WARN  o.s.b.d.a.OptionalLiveReloadServer - Unable to start LiveReload server
+2025-06-02 11:25:16.463 [restartedMain] INFO  c.p.iot.IotServiceApplication - Started IotServiceApplication in 5.188 seconds (process running for 6.674)

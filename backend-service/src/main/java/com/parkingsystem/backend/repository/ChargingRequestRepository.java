@@ -95,4 +95,9 @@ public interface ChargingRequestRepository extends JpaRepository<ChargingRequest
     
     // Esistente
     boolean existsByParkingSpotIdAndStatusIn(Long parkingSpotId, List<ChargingRequest.ChargingStatus> statuses);
+<<<<<<< HEAD
+=======
+
+	List<ChargingRequest> findByUserIdAndParkingSessionsIsNull(Long userId);
+>>>>>>> 3204814 (aggiunta della parking sessions)
 }

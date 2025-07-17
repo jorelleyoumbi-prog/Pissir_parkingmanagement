@@ -1,5 +1,9 @@
 package com.parkingsystem.backend.controller;
 
+<<<<<<< HEAD
+=======
+import java.time.LocalDateTime;
+>>>>>>> 3204814 (aggiunta della parking sessions)
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +18,10 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+<<<<<<< HEAD
+=======
+import org.springframework.web.bind.annotation.PutMapping;
+>>>>>>> 3204814 (aggiunta della parking sessions)
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,6 +32,11 @@ import com.parkingsystem.backend.exception.ResourceNotFoundException;
 import com.parkingsystem.backend.exception.UnauthorizedException;
 import com.parkingsystem.backend.model.Payment;
 import com.parkingsystem.backend.model.User;
+<<<<<<< HEAD
+=======
+import com.parkingsystem.backend.repository.PaymentRepository;
+import com.parkingsystem.backend.model.Payment.PaymentStatus;
+>>>>>>> 3204814 (aggiunta della parking sessions)
 import com.parkingsystem.backend.service.PaymentService;
 import com.parkingsystem.backend.service.UserService;
 
@@ -41,6 +54,11 @@ public class PaymentController {
     
     @Autowired
     private UserService userService;
+<<<<<<< HEAD
+=======
+    @Autowired
+    private PaymentRepository paymentRepository;
+>>>>>>> 3204814 (aggiunta della parking sessions)
     
     private final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
     
@@ -215,6 +233,13 @@ public class PaymentController {
             dto.setPaymentDate(payment.getPaymentDate().format(dateTimeFormatter));
         }
         
+<<<<<<< HEAD
+=======
+        if(payment.getParkingSessions() != null) {
+        	dto.setParkingSessionsId(payment.getParkingSessions().getId());
+        }
+        
+>>>>>>> 3204814 (aggiunta della parking sessions)
         return dto;
     }
     
@@ -285,4 +310,24 @@ public class PaymentController {
                     .body(Map.of("error", "Errore nella creazione del pagamento: " + e.getMessage()));
         }
     }
+<<<<<<< HEAD
+=======
+    
+    @PutMapping("/{id}/complete")
+    public ResponseEntity<?> completePayment(@PathVariable Long id) {
+        Payment payment = paymentRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Payment not found: id = " + id));
+
+        payment.setStatus(PaymentStatus.COMPLETED);
+
+        if (payment.getParkingSessions() != null && payment.getParkingSessions().getExitTime() != null) {
+            payment.setPaymentDate(payment.getParkingSessions().getExitTime());
+        } else {
+            payment.setPaymentDate(LocalDateTime.now());
+        }
+
+        return ResponseEntity.ok(paymentRepository.save(payment));
+    }
+
+>>>>>>> 3204814 (aggiunta della parking sessions)
 }

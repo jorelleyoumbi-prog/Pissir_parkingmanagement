@@ -36,6 +36,13 @@ public class ChargingRequest {
     @ManyToOne
     @JoinColumn(name = "parking_spot_id", nullable = false)
     private ParkingSpot parkingSpot;
+<<<<<<< HEAD
+=======
+    
+    @ManyToOne
+    @JoinColumn(name = "parking_sessions_id")
+    private ParkingSessions parkingSessions;
+>>>>>>> 3204814 (aggiunta della parking sessions)
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -207,4 +214,14 @@ public class ChargingRequest {
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
+<<<<<<< HEAD
+=======
+    
+    public ParkingSessions getParkingSessions() {
+    	return parkingSessions;
+    }
+    public void setParkingSessions(ParkingSessions parkingSessions) {
+    	this.parkingSessions=parkingSessions;
+    }
+>>>>>>> 3204814 (aggiunta della parking sessions)
 }

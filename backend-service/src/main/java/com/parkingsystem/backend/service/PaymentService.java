@@ -12,11 +12,19 @@ import org.springframework.stereotype.Service;
 import com.parkingsystem.backend.exception.BadRequestException;
 import com.parkingsystem.backend.exception.ResourceNotFoundException;
 import com.parkingsystem.backend.model.ChargingRequest;
+<<<<<<< HEAD
+=======
+import com.parkingsystem.backend.model.ParkingSessions;
+>>>>>>> 3204814 (aggiunta della parking sessions)
 import com.parkingsystem.backend.model.ParkingSpot;
 import com.parkingsystem.backend.model.Payment;
 import com.parkingsystem.backend.model.Reservation;
 import com.parkingsystem.backend.model.User;
 import com.parkingsystem.backend.repository.ChargingRequestRepository;
+<<<<<<< HEAD
+=======
+import com.parkingsystem.backend.repository.ParkingSessionsRepository;
+>>>>>>> 3204814 (aggiunta della parking sessions)
 import com.parkingsystem.backend.repository.PaymentRepository;
 import com.parkingsystem.backend.repository.ReservationRepository;
 
@@ -54,6 +62,12 @@ public class PaymentService {
     @Autowired
     private ParkingService parkingService;
     
+<<<<<<< HEAD
+=======
+    @Autowired
+    private ParkingSessionsRepository parkingSessionsRepository;
+    
+>>>>>>> 3204814 (aggiunta della parking sessions)
     /**
      * Create a payment for a reservation
      * @param userId The user ID
@@ -406,6 +420,7 @@ public class PaymentService {
         User user = userService.findById(userId);
         ParkingSpot parkingSpot = parkingService.getParkingSpotById(parkingSpotId);
         
+<<<<<<< HEAD
         // Calcola costo del parcheggio
         LocalDateTime startTime = parkingSpot.getOccupiedSince();
         LocalDateTime endTime = LocalDateTime.now();
@@ -462,6 +477,53 @@ public class PaymentService {
         }
         
         payment.setPaymentDate(LocalDateTime.now());
+=======
+        //Ricuperazione di parkingSessions
+        
+        ParkingSessions session= parkingSessionsRepository.findTopByUserIdAndParkingSpotIdAndExitTimeIsNotNullOrderByExitTimeDesc(userId,parkingSpotId);
+        if(session==null) {
+        	throw new RuntimeException("Nessuna sessione di parking terminata trovata per questo utente");
+        }
+        
+        if(session.getPayment()==null) {
+        	throw new RuntimeException("Il pagamento è già stato effettuato per questo utente");
+        }
+        //dejà calculées dans parkingSessionsController
+        
+        double parkingAmount =session.getParkingCosto() != null ? session.getParkingCosto() :0.0;
+        double chargingAmount =session.getChargingCosto() != null ? session.getChargingCosto() :0.0;
+        double totalAmount =parkingAmount +chargingAmount;
+        
+        //crea il pagamento
+        
+        Payment payment = new Payment();
+        payment.setUser(user);
+        payment.setAmount(totalAmount);
+        payment.setCurrency("EUR");
+        payment.setPaymentMethod(paymentMethod);
+        payment.setStatus(Payment.PaymentStatus.COMPLETED);
+        payment.setPaymentDate(LocalDateTime.now());
+        payment.setTransactionId(generateTransactionId());
+        
+        //tipo di pagamento
+        
+        if(chargingAmount>0.0) {
+        	payment.setType(Payment.PaymentType.PARKING_AND_CHARGING);
+        }
+        else {
+        	payment.setType(Payment.PaymentType.PARKING_ONLY);
+        }
+        
+        
+        // Trova eventuali richieste di ricarica completate per questo utente e posto ed associa alla ricarica se esiste
+        List <ChargingRequest>completedRequests = chargingRequestRepository.findByUserIdAndParkingSpotIdAndStatus(userId, parkingSpotId, ChargingRequest.ChargingStatus.COMPLETED);
+        if(!completedRequests.isEmpty()) {
+        	ChargingRequest lastCompletedRequest = completedRequests.get(completedRequests.size() - 1);
+        	payment.setChargingRequest(lastCompletedRequest);
+        }
+        
+     
+>>>>>>> 3204814 (aggiunta della parking sessions)
         
         // Gestione carta di credito
         if (paymentMethod.equals("CREDIT_CARD") && user.getCreditCardNumber() != null) {
@@ -471,6 +533,7 @@ public class PaymentService {
             }
         }
         
+<<<<<<< HEAD
         // Genera ID transazione
         payment.setTransactionId(generateTransactionId());
         
@@ -485,6 +548,15 @@ public class PaymentService {
         System.out.println("Total amount to pay: " + totalAmount);
         
         return paymentRepository.save(payment);
+=======
+        //lien avaec la session
+        payment.setParkingSessions(session);
+        Payment savedPayment = paymentRepository.save(payment);
+        
+      
+        
+        return savedPayment;
+>>>>>>> 3204814 (aggiunta della parking sessions)
     }
 
     
