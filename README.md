@@ -1,0 +1,1 @@
+Il progetto consiste nella progettazione e realizzazione dell'architettura backend a microservizi per un parcheggio intelligente destinato a veicoli elettrici. Il sistema gestisce l'ottimizzazione dei posti auto e un servizio innovativo di ricarica wireless automatizzata tramite un robot mobile (MWbot).
