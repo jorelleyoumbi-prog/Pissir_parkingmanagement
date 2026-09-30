@@ -1,0 +1,250 @@
+package com.parkingsystem.backend.controller;
+
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.parkingsystem.backend.dto.ReservationDto;
+import com.parkingsystem.backend.exception.BadRequestException;
+import com.parkingsystem.backend.exception.ResourceNotFoundException;
+import com.parkingsystem.backend.model.ParkingSpot;
+import com.parkingsystem.backend.model.Reservation;
+import com.parkingsystem.backend.model.User;
+import com.parkingsystem.backend.service.ParkingService;
+import com.parkingsystem.backend.service.ReservationService;
+import com.parkingsystem.backend.service.UserService;
+
+/**
+ * Controller for reservation operations
+ */
+@RestController
+@RequestMapping("/api/reservations")
+public class ReservationController {
+
+    @Autowired
+    private ReservationService reservationService;
+    
+    @Autowired
+    private ParkingService parkingService;
+    
+    @Autowired
+    private UserService userService;
+    
+    /**
+     * Get all reservations for the current user
+     * @return Response with all reservations
+     */
+    @GetMapping
+    public ResponseEntity<?> getUserReservations() {
+        try {
+            // Get the current authenticated user
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String username = auth.getName();
+            User user = userService.getUserByUsername(username);
+            
+            // Get reservations for the user
+            List<Reservation> reservations = reservationService.getUserReservations(user.getId());
+            
+            // Convert to DTOs
+            List<ReservationDto> reservationDtos = reservations.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(reservationDtos);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Get a specific reservation
+     * @param id The reservation ID
+     * @return Response with the reservation
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getReservation(@PathVariable Long id) {
+        try {
+            // Get the current authenticated user
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String username = auth.getName();
+            User user = userService.getUserByUsername(username);
+            
+            // Check if the reservation belongs to the user or user is admin
+            Reservation reservation = reservationService.getReservationById(id);
+            
+            if (!reservation.getUser().getId().equals(user.getId()) && 
+                    !auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "You do not have permission to view this reservation"));
+            }
+            
+            return ResponseEntity.ok(convertToDto(reservation));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Check availability for a time range
+     * @param startTime The start time
+     * @param endTime The end time
+     * @param chargingRequired Whether charging is required
+     * @return Response with available parking spots
+     */
+    @GetMapping("/availability")
+    public ResponseEntity<?> checkAvailability(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestParam(required = false, defaultValue = "false") boolean chargingRequired) {
+        
+        try {
+            // Validate time range
+            if (startTime.isAfter(endTime)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Start time must be before end time"));
+            }
+            
+            if (startTime.isBefore(LocalDateTime.now())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Start time must be in the future"));
+            }
+            
+            List<ParkingSpot> availableSpots = parkingService.findAvailableSpots(startTime, endTime, chargingRequired);
+            
+            return ResponseEntity.ok(availableSpots.stream()
+                    .map(spot -> {
+                        Map<String, Object> spotMap = new HashMap<>();
+                        spotMap.put("id", spot.getId());
+                        spotMap.put("spotNumber", spot.getSpotNumber());
+                        spotMap.put("chargingAvailable", spot.isChargingAvailable());
+                        return spotMap;
+                    })
+                    .collect(Collectors.toList()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * Create a new reservation
+     * @param requestBody The reservation details
+     * @return Response with the created reservation
+     */
+    @PreAuthorize("hasRole('PREMIUM_USER')")
+    @PostMapping
+    public ResponseEntity<?> createReservation(@RequestBody Map<String, Object> requestBody) {
+        try {
+            // Get the current authenticated user
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String username = auth.getName();
+            User user = userService.getUserByUsername(username);
+            
+            // Extract reservation details
+            if (!requestBody.containsKey("parkingSpotId")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "parkingSpotId is required"));
+            }
+            Long parkingSpotId = Long.valueOf(requestBody.get("parkingSpotId").toString());
+            
+            if (!requestBody.containsKey("startTime")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "startTime is required"));
+            }
+            LocalDateTime startTime = LocalDateTime.parse(requestBody.get("startTime").toString());
+            
+            if (!requestBody.containsKey("endTime")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "endTime is required"));
+            }
+            LocalDateTime endTime = LocalDateTime.parse(requestBody.get("endTime").toString());
+            
+            boolean chargingRequired = false;
+            if (requestBody.containsKey("chargingRequired")) {
+                chargingRequired = Boolean.parseBoolean(requestBody.get("chargingRequired").toString());
+            }
+            
+            // Create the reservation
+            Reservation reservation = reservationService.createReservation(
+                    user.getId(), parkingSpotId, startTime, endTime, chargingRequired);
+            
+            return ResponseEntity.status(HttpStatus.CREATED).body(convertToDto(reservation));
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Failed to create reservation: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Cancel a reservation
+     * @param id The reservation ID
+     * @return Response with success message
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> cancelReservation(@PathVariable Long id) {
+        try {
+            // Get the current authenticated user
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String username = auth.getName();
+            User user = userService.getUserByUsername(username);
+            
+            // Check if the reservation belongs to the user or user is admin
+            Reservation reservation = reservationService.getReservationById(id);
+            
+            if (!reservation.getUser().getId().equals(user.getId()) && 
+                    !auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("error", "You do not have permission to cancel this reservation"));
+            }
+            
+            reservationService.cancelReservation(id);
+            
+            return ResponseEntity.ok(Map.of("message", "Reservation cancelled successfully"));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Failed to cancel reservation: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Convert a reservation to DTO
+     * @param reservation The reservation
+     * @return The reservation DTO
+     */
+    private ReservationDto convertToDto(Reservation reservation) {
+        ReservationDto dto = new ReservationDto();
+        
+        dto.setId(reservation.getId());
+        dto.setStartTime(reservation.getStartTime());
+        dto.setEndTime(reservation.getEndTime());
+        dto.setStatus(reservation.getStatus().toString());
+        dto.setChargingRequired(reservation.isChargingRequired());
+        
+        if (reservation.getParkingSpot() != null) {
+            dto.setParkingSpotId(reservation.getParkingSpot().getId());
+            dto.setParkingSpotNumber(reservation.getParkingSpot().getSpotNumber());
+        }
+        
+        return dto;
+    }
+}

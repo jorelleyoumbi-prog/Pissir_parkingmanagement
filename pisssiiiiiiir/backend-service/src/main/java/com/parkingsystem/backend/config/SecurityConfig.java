@@ -1,0 +1,139 @@
+package com.parkingsystem.backend.config;
+
+import java.io.IOException;
+import java.util.List;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import com.parkingsystem.backend.util.JwtUtil;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true)
+public class SecurityConfig {
+
+    private final UserDetailsService userDetailsService;
+    private final JwtUtil jwtUtil;
+
+    public SecurityConfig(UserDetailsService uds, JwtUtil jwtUtil) {
+        this.userDetailsService = uds;
+        this.jwtUtil            = jwtUtil;
+    }
+
+    // 1) DaoAuthenticationProvider con BCrypt preso dal PasswordConfig
+    @Bean
+    public DaoAuthenticationProvider authProvider(PasswordEncoder passwordEncoder) {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+        return provider;
+    }
+
+    // 2) AuthenticationManager basato sul provider
+    @Bean
+    public AuthenticationManager authenticationManager(
+            HttpSecurity http,
+            DaoAuthenticationProvider authProvider
+    ) throws Exception {
+        return http
+            .getSharedObject(
+                org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder.class
+            )
+            .authenticationProvider(authProvider)
+            .build();
+    }
+
+    // 3) Filtro JWT
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        return new JwtAuthenticationFilter(jwtUtil, userDetailsService);
+    }
+
+    // 4) AccessDeniedHandler JSON‐style
+    @Bean
+    public AccessDeniedHandler accessDeniedHandler() {
+        return new AccessDeniedHandler() {
+            @Override
+            public void handle(
+                    HttpServletRequest request,
+                    HttpServletResponse response,
+                    AccessDeniedException ex
+            ) throws IOException, ServletException {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json");
+                response.getWriter()
+                        .write("{\"error\":\"Access denied: " + ex.getMessage() + "\"}");
+            }
+        };
+    }
+
+    // 5)  centralizzato
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration cfg = new CorsConfiguration();
+        cfg.setAllowedOrigins(List.of("http://localhost:8080"));
+        cfg.setAllowedMethods(List.of(
+            HttpMethod.GET.name(),
+            HttpMethod.POST.name(),
+            HttpMethod.PUT.name(),
+            HttpMethod.PATCH.name(),
+            HttpMethod.DELETE.name(),
+            HttpMethod.OPTIONS.name()
+        ));
+        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
+        src.registerCorsConfiguration("/**", cfg);
+        return src;
+    }
+
+    // 6) SecurityFilterChain: qui inietto l’AccessDeniedHandler e il filtro JWT
+    @Bean
+    public SecurityFilterChain filterChain(
+            HttpSecurity http,
+            AccessDeniedHandler accessDeniedHandler,
+            JwtAuthenticationFilter jwtAuthFilter
+    ) throws Exception {
+        http
+          .csrf(AbstractHttpConfigurer::disable)
+          .cors(Customizer.withDefaults())
+          .sessionManagement(sm -> sm
+              .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+          .exceptionHandling(eh -> eh
+              .accessDeniedHandler(accessDeniedHandler))
+          .authorizeHttpRequests(authz -> authz
+              .requestMatchers("/api/auth/**").permitAll()
+              .requestMatchers("/api/admin/**").hasRole("ADMIN")
+              .requestMatchers("/api/premium/**")
+                .hasAnyRole("PREMIUM_USER","ADMIN")
+              .anyRequest().authenticated())
+          .addFilterBefore(jwtAuthFilter,
+                           UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
+}

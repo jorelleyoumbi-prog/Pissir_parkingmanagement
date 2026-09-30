@@ -1,0 +1,108 @@
+package com.parkingsystem.backend.repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import com.parkingsystem.backend.model.ParkingSpot;
+
+/**
+ * Repository for ParkingSpot entity
+ */
+@Repository
+public interface ParkingSpotRepository extends JpaRepository<ParkingSpot, Long> {
+    
+    /**
+     * Find a parking spot by its number
+     * @param spotNumber The spot number to search for
+     * @return Optional containing the parking spot if found
+     */
+    Optional<ParkingSpot> findBySpotNumber(String spotNumber);
+    
+    /**
+     * Find all unoccupied parking spots
+     * @return List of unoccupied parking spots
+     */
+    List<ParkingSpot> findByOccupiedFalse();
+    
+    /**
+     * Find all occupied parking spots
+     * @return List of occupied parking spots
+     */
+    List<ParkingSpot> findByOccupiedTrue();
+    
+    /**
+     * Find all parking spots that are not reserved
+     * @return List of unreserved parking spots
+     */
+    List<ParkingSpot> findByReservedFalse();
+    
+    /**
+     * Find all parking spots that are not occupied and not reserved
+     * @return List of available parking spots
+     */
+    List<ParkingSpot> findByOccupiedFalseAndReservedFalse();
+    
+    /**
+     * Find all parking spots where charging is available
+     * @return List of parking spots with charging available
+     */
+    List<ParkingSpot> findByChargingAvailableTrue();
+    
+    /**
+     * Find all available parking spots with charging capability
+     * @return List of available charging spots
+     */
+    List<ParkingSpot> findByOccupiedFalseAndReservedFalseAndChargingAvailableTrue();
+    
+    /**
+     * Count the number of occupied parking spots
+     * @return Count of occupied spots
+     */
+    long countByOccupiedTrue();
+    
+    /**
+     * Count the number of available parking spots (not occupied and not reserved)
+     * @return Count of available spots
+     */
+    long countByOccupiedFalseAndReservedFalse();
+    
+    /**
+     * Find parking spots available for a specific time period
+     * (No active reservations overlapping with the specified time period)
+     */
+    @Query("SELECT ps FROM ParkingSpot ps WHERE ps.occupied = false AND ps.reserved = false " +
+           "AND NOT EXISTS (SELECT r FROM Reservation r WHERE r.parkingSpot = ps " +
+           "AND r.status IN ('PENDING', 'CONFIRMED', 'ACTIVE') " +
+           "AND NOT (r.endTime < :startTime OR r.startTime > :endTime))")
+    List<ParkingSpot> findAvailableSpotsForPeriod(
+        @Param("startTime") LocalDateTime startTime,
+        @Param("endTime") LocalDateTime endTime
+    );
+    
+    /**
+     * Find available parking spots for a specific time period with charging capability if required
+     */
+    @Query("SELECT ps FROM ParkingSpot ps WHERE ps.occupied = false AND ps.reserved = false " +
+           "AND (:chargingRequired = false OR ps.chargingAvailable = true) " +
+           "AND NOT EXISTS (SELECT r FROM Reservation r WHERE r.parkingSpot = ps " +
+           "AND r.status IN ('PENDING', 'CONFIRMED', 'ACTIVE') " +
+           "AND NOT (r.endTime < :startTime OR r.startTime > :endTime))")
+    List<ParkingSpot> findAvailableSpotsForPeriodWithCharging(
+        @Param("startTime") LocalDateTime startTime,
+        @Param("endTime") LocalDateTime endTime,
+        @Param("chargingRequired") boolean chargingRequired
+    );
+    
+    /**
+     * Check if a spot number already exists
+     * @param spotNumber The spot number to check
+     * @return true if the spot number exists
+     */
+    boolean existsBySpotNumber(String spotNumber);
+}
